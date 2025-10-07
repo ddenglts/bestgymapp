@@ -28,9 +28,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0a0a] text-white">
+        <div className="relative min-h-screen overflow-hidden bg-[#0a0a0a] text-white">
           <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_60%)]" />
-          {children}
+          <main className="relative mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center px-6 pb-40 pt-16">
+            {children}
+          </main>
           <NavBar />
         </div>
       </body>
