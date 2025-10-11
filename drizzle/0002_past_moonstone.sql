@@ -1,0 +1,4 @@
+ALTER TABLE "exercises" ALTER COLUMN "main_muscles" SET DATA TYPE text;--> statement-breakpoint
+DROP TYPE "public"."main_muscles";--> statement-breakpoint
+CREATE TYPE "public"."main_muscles" AS ENUM('upper_chest', 'middle_chest', 'lower_chest', 'lats', 'traps_upper', 'traps_middle', 'traps_lower', 'rhomboids', 'erector_spinae', 'front_delts', 'side_delts', 'rear_delts', 'biceps', 'triceps', 'forearms', 'abs_upper', 'abs_lower', 'obliques', 'serratus', 'lower_back', 'quadriceps', 'hamstrings', 'adductors', 'abductors', 'glutes', 'calves', 'neck');--> statement-breakpoint
+ALTER TABLE "exercises" ALTER COLUMN "main_muscles" SET DATA TYPE "public"."main_muscles" USING "main_muscles"::"public"."main_muscles";

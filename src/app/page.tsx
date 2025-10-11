@@ -1,26 +1,75 @@
-import { CircleButton } from "@/components/ui/circle-button";
-import { WorkoutCard } from "@/components/workout-card";
+import { asc, desc, eq } from "drizzle-orm";
+import { WorkoutsView } from "@/app/workouts/workouts-view";
+import { db } from "@/db/client";
+import { exercises, workoutExercises, workouts } from "@/db/schema";
 
-export default function Home() {
-  const sampleWorkout = {
-    title: "Pull Session",
-    meta: "Today · 45 min",
-    exercises: [
-      { name: "Weighted Pull-ups", detail: "4 sets · RPE 8 · 45 lb" },
-      { name: "Bent-over Rows", detail: "3 sets · 8 reps · 135 lb" },
-      { name: "Cable Pulldowns", detail: "3 sets · 12 reps · 90 lb" },
-    ],
-  };
+export default async function WorkoutsPage() {
+  const rows = await db
+    .select({
+      workoutId: workouts.id,
+      workoutName: workouts.name,
+      workoutCreatedAt: workouts.createdAt,
+      workoutExerciseId: workoutExercises.id,
+      exerciseId: exercises.id,
+      exerciseName: exercises.name,
+      exerciseOrder: workoutExercises.order,
+    })
+    .from(workouts)
+    .leftJoin(workoutExercises, eq(workoutExercises.workoutId, workouts.id))
+    .leftJoin(exercises, eq(workoutExercises.exerciseId, exercises.id))
+    .orderBy(desc(workouts.createdAt), asc(workoutExercises.order));
+
+  const workoutMap = new Map<
+    number,
+    {
+      id: number;
+      name: string;
+      createdAt: Date;
+      exercises: { id: number; exerciseId: number; name: string }[];
+    }
+  >();
+
+  for (const row of rows) {
+    const existing = workoutMap.get(row.workoutId);
+    if (!existing) {
+      workoutMap.set(row.workoutId, {
+        id: row.workoutId,
+        name: row.workoutName,
+        createdAt:
+          row.workoutCreatedAt instanceof Date
+            ? row.workoutCreatedAt
+            : new Date(row.workoutCreatedAt),
+        exercises: [],
+      });
+    }
+
+    if (row.exerciseId && row.workoutExerciseId) {
+      const workout = workoutMap.get(row.workoutId)!;
+      workout.exercises.push({
+        id: row.workoutExerciseId,
+        exerciseId: row.exerciseId,
+        name: row.exerciseName!,
+      });
+    }
+  }
+
+  const initialWorkouts = Array.from(workoutMap.values());
+
+  const availableExercises = await db
+    .select({
+      id: exercises.id,
+      name: exercises.name,
+    })
+    .from(exercises)
+    .orderBy(asc(exercises.name));
 
   return (
-    <section className="flex w-full flex-1 flex-col items-center gap-10">
-      <div className="flex flex-wrap items-center justify-center gap-4">
-        <CircleButton>New Workout</CircleButton>
-        <CircleButton>New Exercise</CircleButton>
-      </div>
-      <div className="flex w-full flex-col gap-4">
-        <WorkoutCard {...sampleWorkout} />
-      </div>
-    </section>
+    <WorkoutsView
+      initialWorkouts={initialWorkouts}
+      availableExercises={availableExercises.map((exercise) => ({
+        id: exercise.id,
+        name: exercise.name,
+      }))}
+    />
   );
 }

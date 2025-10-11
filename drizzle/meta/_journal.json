@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1760103491604,
+      "tag": "0000_brown_bromley",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1760103911956,
+      "tag": "0001_glamorous_steel_serpent",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1760104244711,
+      "tag": "0002_past_moonstone",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1760113734510,
+      "tag": "0003_curvy_ser_duncan",
+      "breakpoints": true
+    }
+  ]
+}
