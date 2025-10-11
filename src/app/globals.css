@@ -35,3 +35,10 @@ body {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+
+.header {
+  background: #0a0a0a;
+  padding-top: env(safe-area-inset-top);
+  /* Fallback for very old iOS: */
+  padding-top: constant(safe-area-inset-top);
+}
