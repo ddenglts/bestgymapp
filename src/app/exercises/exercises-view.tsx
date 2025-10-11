@@ -50,7 +50,7 @@ export function ExercisesView({ initialExercises }: ExercisesViewProps) {
           const createdExercise: ExerciseCardData = {
             id: created.id,
             name: created.name,
-            createdAt: created.createdAt ? new Date(created.createdAt) : new Date(),
+            recentSets: [],
           };
 
           setExercises((prev) => {
@@ -58,7 +58,7 @@ export function ExercisesView({ initialExercises }: ExercisesViewProps) {
               return prev;
             }
 
-            return [createdExercise, ...prev];
+              return [...prev, createdExercise];
           });
           form.reset();
           setIsComposerOpen(false);
@@ -108,7 +108,7 @@ export function ExercisesView({ initialExercises }: ExercisesViewProps) {
           }
 
           const next = [...prev];
-          next.splice(Math.min(removedIndex, next.length), 0, removedExercise);
+          next.splice(Math.min(removedIndex, next.length), 0, removedExercise!);
           return next;
         });
       }
@@ -118,10 +118,10 @@ export function ExercisesView({ initialExercises }: ExercisesViewProps) {
   };
 
   return (
-    <section className="flex w-full flex-1 flex-col items-center px-3 py-4">
-      <div className="flex w-full flex-col gap-3">
+    <section className="flex w-full flex-1 flex-col items-center px-4 py-5">
+      <div className="flex w-full flex-col gap-3.5">
         <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
+          <h1 className="text-xl font-semibold tracking-tight text-white">
             Exercises
           </h1>
           <p className="text-sm text-white/60">
@@ -147,26 +147,28 @@ export function ExercisesView({ initialExercises }: ExercisesViewProps) {
                   </TrailingActions>
                 }
               >
-                <div className={`w-full ${index < exercises.length - 1 ? "mb-3" : "mb-3"}`}>
+                <div className={`w-full ${index < exercises.length - 1 ? "mb-3.5" : "mb-0"}`}>
                   <ExerciseCard {...exercise} />
                 </div>
               </SwipeableListItem>
             ))}
           </SwipeableList>
-          <ExerciseComposer
-            isOpen={isComposerOpen}
-            isSubmitting={isPending}
-            onOpen={() => {
-              setErrorMessage(null);
-              setIsComposerOpen(true);
-              requestAnimationFrame(() => {
-                formRef.current?.querySelector<HTMLInputElement>("#name")?.focus();
-              });
-            }}
-            onCancel={handleCancel}
-            onSubmit={handleSubmit}
-            formRef={formRef}
-          />
+          <div className="mt-3.5 w-full">
+            <ExerciseComposer
+              isOpen={isComposerOpen}
+              isSubmitting={isPending}
+              onOpen={() => {
+                setErrorMessage(null);
+                setIsComposerOpen(true);
+                requestAnimationFrame(() => {
+                  formRef.current?.querySelector<HTMLInputElement>("#name")?.focus();
+                });
+              }}
+              onCancel={handleCancel}
+              onSubmit={handleSubmit}
+              formRef={formRef}
+            />
+          </div>
         </div>
       </div>
     </section>

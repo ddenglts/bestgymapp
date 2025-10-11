@@ -39,28 +39,26 @@ export function StartWorkoutView({ workouts }: StartWorkoutViewProps) {
   }, [workouts]);
 
   return (
-    <section className="flex w-full flex-1 flex-col items-center px-3 py-2">
-      <div className="flex w-full flex-col gap-3">
+    <section className="flex w-full flex-1 flex-col items-center px-4 py-5">
+      <div className="flex w-full flex-col gap-3.5">
         <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
+          <h1 className="text-xl font-semibold tracking-tight text-white">
             Start a workout
           </h1>
           <p className="text-sm text-white/60">
             Pick a template below and jump right in.
           </p>
         </header>
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-3.5">
           {sortedWorkouts.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.04] px-4 py-6 text-center text-sm text-white/60">
+            <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.05] px-4 py-6 text-center text-sm text-white/60">
               Create a workout to get started.
             </div>
           ) : (
-            sortedWorkouts.map((workout, index) => (
+            sortedWorkouts.map((workout) => (
               <div
                 key={workout.id}
-                className={`w-full rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/80 shadow-[0_18px_30px_-20px_rgba(0,0,0,0.55)] backdrop-blur ${
-                  index < sortedWorkouts.length - 1 ? "mb-3" : "mb-4"
-                }`}
+                className="w-full rounded-3xl border border-white/12 bg-white/[0.05] px-4 py-4 text-sm text-white/80 shadow-[0_18px_36px_-22px_rgba(0,0,0,0.55)] backdrop-blur"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex flex-col gap-1">
@@ -79,7 +77,6 @@ export function StartWorkoutView({ workouts }: StartWorkoutViewProps) {
                     &gt;
                   </Link>
                 </div>
-                
               </div>
             ))
           )}

@@ -80,7 +80,7 @@ export function WorkoutsView({
               return prev;
             }
 
-            return [createdWorkout, ...prev];
+            return [...prev, createdWorkout];
           });
 
           form.reset();
@@ -164,16 +164,16 @@ export function WorkoutsView({
 
   const formatDate = (date: Date) =>
     new Intl.DateTimeFormat("en-US", {
-      month: "short",
+      month: "numeric",
       day: "numeric",
-      year: "numeric",
+      year: "2-digit",
     }).format(date);
 
   return (
-    <section className="flex w-full flex-1 flex-col items-center px-3 py-4">
-      <div className="flex w-full flex-col gap-3">
+    <section className="flex w-full flex-1 flex-col items-center px-4 py-5">
+      <div className="flex w-full flex-col gap-3.5">
         <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Workouts</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-white">Workouts</h1>
           <p className="text-sm text-white/60">
             Build templates and load them faster during your sessions.
           </p>
@@ -188,10 +188,10 @@ export function WorkoutsView({
 
               const footerContent = isAdding ? (
                 <form
-                onSubmit={(event) => handleAddExerciseSubmit(event, workout.id)}
-                className="flex max-w-[220px] flex-col gap-2 rounded-2xl border border-dashed border-white/25 bg-white/[0.04] p-3 shadow-[0_18px_24px_-18px_rgba(0,0,0,0.55)] backdrop-blur"
-              >
-                <div className="flex flex-1 flex-col gap-1.5">
+                  onSubmit={(event) => handleAddExerciseSubmit(event, workout.id)}
+                  className="flex max-w-[220px] flex-col gap-1.5 rounded-2xl border border-dashed border-white/25 bg-white/[0.04] p-2.5 shadow-[0_18px_24px_-18px_rgba(0,0,0,0.55)] backdrop-blur"
+                >
+                  <div className="flex flex-1 flex-col gap-1">
                   <label
                     htmlFor={`exercise-select-${workout.id}`}
                     className="text-xs uppercase tracking-[0.2em] text-white/60"
@@ -215,56 +215,56 @@ export function WorkoutsView({
                     ))}
                   </select>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCancelAddExercise}
-                    disabled={isSubmitting}
-                    className="rounded-lg border border-white/10 px-3 py-1 text-[11px] font-medium text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="rounded-lg border border-white/10 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold tracking-tight text-white transition hover:border-white/20 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isSubmitting ? "Adding…" : "Add"}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenWorkoutId(workout.id);
-                  setErrorMessage(null);
-                  requestAnimationFrame(() => {
-                    document.getElementById(`exercise-select-${workout.id}`)?.focus();
-                  });
-                }}
-                className="group inline-flex max-w-[220px] items-center gap-2 rounded-2xl border border-dashed border-white/25 bg-white/[0.04] px-3 py-2 text-left text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-              >
-                <span>Add exercise</span>
-                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-white/10 text-sm transition group-hover:border-white/25 group-hover:bg-white/20">
-                  →
-                </span>
-              </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleCancelAddExercise}
+                      disabled={isSubmitting}
+                      className="rounded-lg border border-white/10 px-3 py-1 text-[11px] font-medium text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="rounded-lg border border-white/10 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold tracking-tight text-white transition hover:border-white/20 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSubmitting ? "Adding…" : "Add"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenWorkoutId(workout.id);
+                    setErrorMessage(null);
+                    requestAnimationFrame(() => {
+                      document.getElementById(`exercise-select-${workout.id}`)?.focus();
+                    });
+                  }}
+                  className="group inline-flex max-w-[220px] items-center gap-1.5 rounded-2xl border border-dashed border-white/25 bg-white/[0.05] px-3.5 py-2 text-left text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                >
+                  <span>Add exercise</span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white/15 bg-white/10 text-xs transition group-hover:border-white/25 group-hover:bg-white/20">
+                    →
+                  </span>
+                </button>
               );
 
               const exerciseList = (
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5">
                   {workoutExercises.length > 0 ? (
                     workoutExercises.map((exercise) => (
                       <div
                         key={exercise.id}
-                        className="w-full rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-sm font-medium text-white/80"
+                        className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-white/80"
                       >
                         {exercise.name}
                       </div>
                     ))
                   ) : (
-                    <div className="w-full rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-sm font-medium text-white/60">
+                    <div className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-white/60">
                       No exercises yet
                     </div>
                   )}
@@ -287,7 +287,7 @@ export function WorkoutsView({
                     </TrailingActions>
                   }
                 >
-                  <div className={`w-full ${index < workouts.length - 1 ? "mb-3" : "mb-0"}`}>
+                  <div className={`w-full ${index < workouts.length - 1 ? "mb-3.5" : "mb-0"}`}>
                     <WorkoutCard
                       title={workout.name}
                       meta={`Created ${formatDate(workout.createdAt)}`}
@@ -299,20 +299,22 @@ export function WorkoutsView({
               );
             })}
           </SwipeableList>
-          <WorkoutComposer
-            isOpen={isComposerOpen}
-            isSubmitting={isPending}
-            onOpen={() => {
-              setErrorMessage(null);
-              setIsComposerOpen(true);
-              requestAnimationFrame(() => {
-                formRef.current?.querySelector<HTMLInputElement>("#name")?.focus();
-              });
-            }}
-            onCancel={handleCancelCreate}
-            onSubmit={handleCreateSubmit}
-            formRef={formRef}
-          />
+          <div className="mt-0.5 w-full">
+            <WorkoutComposer
+              isOpen={isComposerOpen}
+              isSubmitting={isPending}
+              onOpen={() => {
+                setErrorMessage(null);
+                setIsComposerOpen(true);
+                requestAnimationFrame(() => {
+                  formRef.current?.querySelector<HTMLInputElement>("#name")?.focus();
+                });
+              }}
+              onCancel={handleCancelCreate}
+              onSubmit={handleCreateSubmit}
+              formRef={formRef}
+            />
+          </div>
         </div>
       </div>
     </section>
