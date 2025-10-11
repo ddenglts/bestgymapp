@@ -38,7 +38,6 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
     .select({
       id: workouts.id,
       name: workouts.name,
-      createdAt: workouts.createdAt,
     })
     .from(workouts)
     .where(eq(workouts.id, workoutId))
@@ -61,11 +60,6 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
     .orderBy(asc(workoutExercises.order), asc(exercises.name));
 
   const [workoutRow] = workout;
-  const createdAt =
-    workoutRow.createdAt instanceof Date
-      ? workoutRow.createdAt
-      : new Date(workoutRow.createdAt);
-
   const [activeSession] = await db
     .select({
       sessionId: currentWorkout.sessionId,
@@ -259,24 +253,21 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
   return (
     <section className="flex w-full flex-1 flex-col gap-4 px-4 py-5 text-white">
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold tracking-tight">{workoutRow.name}</h1>
-        <p className="text-sm text-white/60">
-          Created{" "}
-          {new Intl.DateTimeFormat("en-US", {
-            month: "numeric",
-            day: "numeric",
-            year: "2-digit",
-          }).format(createdAt)}
-        </p>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight">{workoutRow.name}&nbsp;</h1>
+          {isActiveSessionForWorkout && activeSessionId ? (
+            <span className="relative inline-flex h-2 w-2 items-center justify-center">
+              <span className="absolute left-1/2 top-1/2 inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 transform animate-ping rounded-full bg-emerald-400/70 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.65)]" />
+            </span>
+          ) : null}
+        </div>
       </header>
       <div className="flex flex-col items-end gap-2">
         {isActiveSessionForWorkout && activeSessionStartedAt ? (
           <p className="text-xs uppercase tracking-[0.2em] text-white/40">
             Started{" "}
             {new Intl.DateTimeFormat("en-US", {
-              month: "numeric",
-              day: "numeric",
-              year: "2-digit",
               hour: "numeric",
               minute: "numeric",
             }).format(activeSessionStartedAt)}
