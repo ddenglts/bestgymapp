@@ -251,15 +251,38 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
   }
 
   return (
-    <section className="flex w-full flex-1 flex-col gap-4 px-4 py-5 text-white">
-      <header className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight">{workoutRow.name}&nbsp;</h1>
+    <section className="flex w-full flex-1 flex-col gap-4 px-4 pb-5 pt-3 text-white">
+      <header className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight">{workoutRow.name}&nbsp;</h1>
+            {isActiveSessionForWorkout && activeSessionId ? (
+              <span className="relative inline-flex h-2 w-2 items-center justify-center">
+                <span className="absolute left-1/2 top-1/2 inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 transform animate-ping rounded-full bg-emerald-400/70 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.65)]" />
+              </span>
+            ) : null}
+          </div>
           {isActiveSessionForWorkout && activeSessionId ? (
-            <span className="relative inline-flex h-2 w-2 items-center justify-center">
-              <span className="absolute left-1/2 top-1/2 inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 transform animate-ping rounded-full bg-emerald-400/70 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.65)]" />
-            </span>
+            <form
+              action={async (formData) => {
+                "use server";
+                await endWorkout(formData);
+                redirect("/workout");
+              }}
+            >
+              <input
+                type="hidden"
+                name="sessionId"
+                value={String(activeSessionId)}
+              />
+              <button
+                type="submit"
+                className="rounded-full border border-rose-400/40 bg-rose-500/20 px-4 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-rose-100 transition hover:border-rose-300 hover:bg-rose-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40"
+              >
+                End
+              </button>
+            </form>
           ) : null}
         </div>
       </header>
@@ -273,27 +296,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
             }).format(activeSessionStartedAt)}
           </p>
         ) : null}
-        {isActiveSessionForWorkout && activeSessionId ? (
-          <form
-            action={async (formData) => {
-              "use server";
-              await endWorkout(formData);
-              redirect("/workout");
-            }}
-          >
-            <input
-              type="hidden"
-              name="sessionId"
-              value={String(activeSessionId)}
-            />
-            <button
-              type="submit"
-              className="rounded-full border border-rose-400/40 bg-rose-500/20 px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-rose-100 transition hover:border-rose-300 hover:bg-rose-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40"
-            >
-              End workout
-            </button>
-          </form>
-        ) : (
+        {isActiveSessionForWorkout && activeSessionId ? null : (
           <form action={startWorkout}>
             <input
               type="hidden"

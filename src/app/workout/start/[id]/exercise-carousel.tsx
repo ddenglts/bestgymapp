@@ -112,6 +112,8 @@ export function WorkoutExerciseCarousel({
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isUpdatingActive, startActiveTransition] = useTransition();
+  const repsInputRefs = useRef(new Map<number, HTMLInputElement>());
+  const weightInputRefs = useRef(new Map<number, HTMLInputElement>());
 
   useEffect(() => {
     setActiveIndex(initialIndex);
@@ -239,6 +241,82 @@ export function WorkoutExerciseCarousel({
     isDraggingRef.current = false;
   };
 
+  const assignRepsInputRef = useCallback(
+    (exerciseKey: number) => (node: HTMLInputElement | null) => {
+      if (node) {
+        repsInputRefs.current.set(exerciseKey, node);
+      } else {
+        repsInputRefs.current.delete(exerciseKey);
+      }
+    },
+    [],
+  );
+
+  const assignWeightInputRef = useCallback(
+    (exerciseKey: number) => (node: HTMLInputElement | null) => {
+      if (node) {
+        weightInputRefs.current.set(exerciseKey, node);
+      } else {
+        weightInputRefs.current.delete(exerciseKey);
+      }
+    },
+    [],
+  );
+
+  const incrementReps = useCallback((exerciseKey: number) => {
+    const input = repsInputRefs.current.get(exerciseKey);
+    if (!input) {
+      return;
+    }
+
+    const currentValue = Number(input.value);
+    const nextValue = Number.isFinite(currentValue) && currentValue > 0 ? currentValue + 1 : 1;
+    input.value = String(nextValue);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, []);
+
+  const incrementWeight = useCallback((exerciseKey: number) => {
+    const input = weightInputRefs.current.get(exerciseKey);
+    if (!input) {
+      return;
+    }
+
+    const currentValue = Number(input.value);
+    const baseValue = Number.isFinite(currentValue) && currentValue >= 0 ? currentValue : 0;
+    const nextValue = baseValue + 5;
+    input.value = String(nextValue);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, []);
+
+  const fillFormFromPreviousSet = useCallback((exercise: CarouselExercise, set: PreviousSet) => {
+    if (set.reps == null || set.reps <= 0) {
+      return;
+    }
+
+    const repsInput = repsInputRefs.current.get(exercise.workoutExerciseId);
+    const weightInput = weightInputRefs.current.get(exercise.workoutExerciseId);
+
+    if (repsInput) {
+      repsInput.value = String(set.reps);
+      repsInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    if (weightInput) {
+      if (set.weight != null && !Number.isNaN(set.weight)) {
+        weightInput.value = String(set.weight);
+      } else {
+        weightInput.value = "";
+      }
+      weightInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    requestAnimationFrame(() => {
+      if (repsInput) {
+        repsInput.focus();
+      }
+    });
+  }, []);
+
   const trackStyle = useMemo<CSSProperties>(() => {
     const translate = `calc(-${activeIndex * 100}% + ${dragOffset}px)`;
     return {
@@ -268,7 +346,7 @@ export function WorkoutExerciseCarousel({
             className="rounded-full border border-white/20 px-2 py-1 text-white/70 transition hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             disabled={activeIndex === 0 || isUpdatingActive}
           >
-            Prev
+            &lt;
           </button>
           <button
             type="button"
@@ -276,7 +354,7 @@ export function WorkoutExerciseCarousel({
             className="rounded-full border border-white/20 px-2 py-1 text-white/70 transition hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             disabled={activeIndex === exercises.length - 1 || isUpdatingActive}
           >
-            Next
+            &gt;
           </button>
         </div>
       </div>
@@ -299,7 +377,7 @@ export function WorkoutExerciseCarousel({
                 key={exercise.workoutExerciseId}
                 className="w-full shrink-0 rounded-3xl border border-white/12 bg-white/[0.05] px-5 py-6 text-white/80 shadow-[0_18px_36px_-22px_rgba(0,0,0,0.55)] backdrop-blur"
               >
-                <div className="flex flex-col gap-5">
+                <div className="flex h-full flex-col gap-5">
                   <header className="flex items-start justify-between gap-3">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs uppercase tracking-[0.3em] text-white/40">
@@ -314,14 +392,26 @@ export function WorkoutExerciseCarousel({
                         Previous session{previousDate ? ` on ${previousDate}` : ""}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
-                        {exercise.previous.sets.map((set, index) => (
-                          <span
-                            key={`${set.setNumber}-${index}`}
-                            className="flex min-w-[52px] items-center justify-center rounded-xl border border-white/12 bg-white/[0.08] px-2 py-1 text-center text-[11px] uppercase tracking-[0.25em] text-white/70"
-                          >
-                            {formatPreviousSetSummary(set)}
-                          </span>
-                        ))}
+                        {exercise.previous.sets.map((set, index) => {
+                          const isDisabled =
+                            set.reps == null ||
+                            set.reps <= 0 ||
+                            set.weight == null ||
+                            Number.isNaN(set.weight);
+
+                          return (
+                            <button
+                              key={`${exercise.workoutExerciseId}-${set.setNumber}-${index}`}
+                              type="button"
+                              onClick={() => fillFormFromPreviousSet(exercise, set)}
+                              className="flex min-w-[52px] items-center justify-center rounded-xl border border-white/12 bg-white/[0.08] px-3 py-1 text-center text-[11px] uppercase tracking-[0.25em] text-white/70 transition hover:border-white/20 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-white/40"
+                              disabled={isDisabled}
+                              aria-label={`Use ${set.reps ?? "—"} reps at ${set.weight ?? "—"}`}
+                            >
+                              {formatPreviousSetSummary(set)}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : (
@@ -329,7 +419,7 @@ export function WorkoutExerciseCarousel({
                       No previous data yet.
                     </p>
                   )}
-                  <section className="flex flex-col gap-3">
+                  <section className="flex flex-1 flex-col gap-3">
                     <h3 className="text-xs uppercase tracking-[0.25em] text-white/40">
                       Logged sets
                     </h3>
@@ -343,9 +433,6 @@ export function WorkoutExerciseCarousel({
                             className="flex items-center justify-between gap-3 rounded-2xl border border-white/12 bg-white/[0.06] px-3.5 py-2.5"
                           >
                             <div className="flex flex-col gap-1">
-                              <span className="text-[11px] uppercase tracking-[0.3em] text-white/40">
-                                Set {set.setNumber}
-                              </span>
                               <span>
                                 {set.reps ?? "—"} reps{" "}
                                 {set.weight !== null
@@ -370,7 +457,7 @@ export function WorkoutExerciseCarousel({
                   </section>
                   <form
                     action={logSet}
-                    className="flex flex-col gap-3 rounded-2xl border border-white/12 bg-white/[0.06] p-4"
+                    className="mt-auto flex flex-col gap-3 rounded-2xl border border-white/12 bg-white/[0.06] p-4"
                   >
                     <input type="hidden" name="workoutId" value={String(workoutId)} />
                     <input type="hidden" name="sessionId" value={String(sessionId)} />
@@ -384,28 +471,51 @@ export function WorkoutExerciseCarousel({
                       name="exerciseId"
                       value={String(exercise.exerciseId)}
                     />
-                    <div className="grid grid-cols-2 gap-3">
-                      <label className="flex flex-col gap-1 text-[11px] uppercase tracking-[0.3em] text-white/40">
+                    <div className="flex gap-3">
+                      <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] uppercase tracking-[0.3em] text-white/40">
                         Reps
-                        <input
-                          name="reps"
-                          type="number"
-                          min={1}
-                          step={1}
-                          required
-                          className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white/80 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            name="reps"
+                            type="number"
+                            min={1}
+                            step={1}
+                            required
+                            ref={assignRepsInputRef(exercise.workoutExerciseId)}
+                            className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white/80 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => incrementReps(exercise.workoutExerciseId)}
+                            className="rounded-full border border-white/20 bg-white/[0.08] px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/70 transition hover:border-white/30 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                            aria-label="Add one rep"
+                          >
+                            +1
+                          </button>
+                        </div>
                       </label>
-                      <label className="flex flex-col gap-1 text-[11px] uppercase tracking-[0.3em] text-white/40">
+                      <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] uppercase tracking-[0.3em] text-white/40">
                         Weight
-                        <input
-                          name="weight"
-                          type="number"
-                          step="0.5"
-                          inputMode="decimal"
-                          placeholder="Optional"
-                          className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white/80 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            name="weight"
+                            type="number"
+                            step="0.5"
+                            inputMode="decimal"
+                            min={0}
+                            required
+                            ref={assignWeightInputRef(exercise.workoutExerciseId)}
+                            className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white/80 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => incrementWeight(exercise.workoutExerciseId)}
+                            className="rounded-full border border-white/20 bg-white/[0.08] px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/70 transition hover:border-white/30 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                            aria-label="Add five pounds"
+                          >
+                            +5
+                          </button>
+                        </div>
                       </label>
                     </div>
                     <button

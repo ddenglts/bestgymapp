@@ -124,9 +124,6 @@ export function ExercisesView({ initialExercises }: ExercisesViewProps) {
           <h1 className="text-xl font-semibold tracking-tight text-white">
             Exercises
           </h1>
-          <p className="text-sm text-white/60">
-            Build your library and keep movement cues close by.
-          </p>
         </header>
         {errorMessage ? <Toast message={errorMessage} onDismiss={dismissToast} /> : null}
         <div className="flex flex-col gap-0">

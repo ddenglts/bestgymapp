@@ -100,10 +100,12 @@ export async function logExerciseSet(formData: FormData) {
   );
   const exerciseId = Number(typeof rawExerciseId === "string" ? rawExerciseId : "");
   const reps = Number(typeof rawReps === "string" ? rawReps : "");
-  const weight =
-    rawWeight === null || rawWeight === ""
-      ? null
-      : Number(typeof rawWeight === "string" ? rawWeight : "");
+  const weightInput = typeof rawWeight === "string" ? rawWeight : "";
+  const hasWeight = weightInput.trim() !== "";
+  if (!hasWeight) {
+    throw new Error("Weight must be provided.");
+  }
+  const weight = Number(weightInput);
 
   if (
     !Number.isFinite(workoutId) ||
@@ -122,7 +124,7 @@ export async function logExerciseSet(formData: FormData) {
     throw new Error("Reps must be a positive number.");
   }
 
-  if (weight !== null && !Number.isFinite(weight)) {
+  if (!Number.isFinite(weight)) {
     throw new Error("Weight must be a number.");
   }
 
@@ -140,16 +142,13 @@ export async function logExerciseSet(formData: FormData) {
 
   const setNumber = nextSet?.nextSetNumber ?? 1;
 
-  const weightValue =
-    typeof weight === "number" && Number.isFinite(weight) ? weight.toString() : null;
-
   await db.insert(exerciseSets).values({
     sessionId,
     workoutExerciseId,
     exerciseId,
     setNumber,
     reps,
-    weight: weightValue,
+    weight: weight.toString(),
   });
 
   revalidatePath(`/workout/start/${workoutId}`, "page");

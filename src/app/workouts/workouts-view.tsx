@@ -174,9 +174,6 @@ export function WorkoutsView({
       <div className="flex w-full flex-col gap-3.5">
         <header className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold tracking-tight text-white">Workouts</h1>
-          <p className="text-sm text-white/60">
-            Build templates and load them faster during your sessions.
-          </p>
         </header>
         {errorMessage ? <Toast message={errorMessage} onDismiss={dismissToast} /> : null}
         <div className="flex flex-col gap-3">

@@ -35,9 +35,6 @@ export default async function HistoryPage() {
             <h1 className="text-xl font-semibold tracking-tight text-white">
               History
             </h1>
-            <p className="text-sm text-white/60">
-              Review past sessions and track how you are progressing.
-            </p>
           </header>
           <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.05] px-4 py-6 text-center text-sm text-white/60">
             Workout history will appear here once you log a session.
@@ -167,9 +164,6 @@ export default async function HistoryPage() {
           <h1 className="text-xl font-semibold tracking-tight text-white">
             History
           </h1>
-          <p className="text-sm text-white/60">
-            Review past sessions and track how you are progressing.
-          </p>
         </header>
         <HistoryList items={historyItems} />
       </div>

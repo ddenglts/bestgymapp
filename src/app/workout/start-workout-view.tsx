@@ -45,9 +45,6 @@ export function StartWorkoutView({ workouts }: StartWorkoutViewProps) {
           <h1 className="text-xl font-semibold tracking-tight text-white">
             Start a workout
           </h1>
-          <p className="text-sm text-white/60">
-            Pick a template below and jump right in.
-          </p>
         </header>
         <div className="flex flex-col gap-3.5">
           {sortedWorkouts.length === 0 ? (
