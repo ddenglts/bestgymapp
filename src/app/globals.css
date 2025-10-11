@@ -2,7 +2,7 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #000000;
 }
 
 @theme inline {
@@ -14,7 +14,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #000000;
     --foreground: #ededed;
   }
 }
@@ -37,7 +37,7 @@ body {
 }
 
 .header {
-  background: #0a0a0a;
+  background: #000000;
   padding-top: env(safe-area-inset-top);
   /* Fallback for very old iOS: */
   padding-top: constant(safe-area-inset-top);

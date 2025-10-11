@@ -8,8 +8,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover", // <- allows content under the notch
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#0b132b" },
-    { media: "(prefers-color-scheme: dark)",  color: "#0b132b" },
+    { media: "(prefers-color-scheme: light)", color: "#000000" },
+    { media: "(prefers-color-scheme: dark)",  color: "#000000" },
   ],
 };
 
