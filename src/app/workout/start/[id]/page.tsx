@@ -92,6 +92,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
     setNumber: number;
     reps: number | null;
     weight: number | null;
+    restSeconds: number | null;
   };
 
   type PreviousStat = {
@@ -179,6 +180,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
             setNumber: exerciseSets.setNumber,
             reps: exerciseSets.reps,
             weight: exerciseSets.weight,
+            loggedAt: exerciseSets.loggedAt,
           })
           .from(exerciseSets)
           .where(
@@ -200,7 +202,14 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
             ? new Date(previousSession.completedAt)
             : null;
 
-        const sets: PreviousSet[] = rawSets.map((set, index) => {
+        type RawPreviousSet = {
+          setNumber: number;
+          reps: number | null;
+          weight: number | null;
+          loggedAt: Date | null;
+        };
+
+        const normalizedSets: RawPreviousSet[] = rawSets.map((set, index) => {
           const numericSetNumber =
             typeof set.setNumber === "number" ? set.setNumber : Number(set.setNumber ?? NaN);
           const normalizedSetNumber =
@@ -226,10 +235,45 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
           const weight =
             numericWeight == null || Number.isNaN(numericWeight) ? null : numericWeight;
 
+          const loggedAt =
+            set.loggedAt instanceof Date
+              ? set.loggedAt
+              : set.loggedAt
+              ? new Date(set.loggedAt)
+              : null;
+
           return {
             setNumber: normalizedSetNumber,
             reps,
             weight,
+            loggedAt,
+          };
+        });
+
+        normalizedSets.sort((a, b) => {
+          const first = a.loggedAt?.getTime() ?? 0;
+          const second = b.loggedAt?.getTime() ?? 0;
+          if (first === second) {
+            return a.setNumber - b.setNumber;
+          }
+          return first - second;
+        });
+
+        let previousLoggedAt: Date | null = null;
+        const setsWithRest: PreviousSet[] = normalizedSets.map((set) => {
+          let restSeconds: number | null = null;
+          if (set.loggedAt && previousLoggedAt) {
+            restSeconds = Math.max(
+              0,
+              Math.round((set.loggedAt.getTime() - previousLoggedAt.getTime()) / 1000),
+            );
+          }
+          previousLoggedAt = set.loggedAt ?? previousLoggedAt;
+          return {
+            setNumber: set.setNumber,
+            reps: set.reps,
+            weight: set.weight,
+            restSeconds,
           };
         });
 
@@ -237,7 +281,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
           exerciseId: exerciseRow.exerciseId,
           stat: {
             completedAt,
-            sets,
+            sets: setsWithRest,
           },
         };
       }),

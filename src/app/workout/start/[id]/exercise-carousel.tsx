@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { CSSProperties, TouchEvent } from "react";
+import type { CSSProperties, TouchEvent, ReactNode } from "react";
 
 type LoggedSet = {
   id: number;
@@ -14,6 +14,7 @@ type PreviousSet = {
   setNumber: number;
   reps: number | null;
   weight: number | null;
+  restSeconds: number | null;
 };
 
 type PreviousStat = {
@@ -69,6 +70,66 @@ const formatPreviousSetSummary = (set: PreviousSet) => {
   const weightDisplay = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
   return `${repsDisplay}@${weightDisplay}`;
 };
+
+const formatRest = (restSeconds: number | null) => {
+  if (restSeconds == null || !Number.isFinite(restSeconds)) {
+    return null;
+  }
+  const minutes = Math.floor(restSeconds / 60);
+  const seconds = Math.max(0, restSeconds % 60);
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+};
+
+function PreviousSessionSets({
+  exercise,
+  fillFormFromPreviousSet,
+}: {
+  exercise: CarouselExercise;
+  fillFormFromPreviousSet: (exercise: CarouselExercise, set: PreviousSet) => void;
+}) {
+  const items: ReactNode[] = [];
+
+  exercise.previous?.sets.forEach((set, index) => {
+    const isDisabled =
+      set.reps == null || set.reps <= 0 || set.weight == null || Number.isNaN(set.weight);
+
+    const setTile = (
+      <button
+        key={`${exercise.workoutExerciseId}-${set.setNumber}-${index}`}
+        type="button"
+        onClick={() => fillFormFromPreviousSet(exercise, set)}
+        className="flex min-w-[52px] items-center justify-center rounded-xl border border-white/12 bg-white/[0.08] px-3 py-1 text-center text-[11px] uppercase tracking-[0.25em] text-white/70 transition hover:border-white/20 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-white/40"
+        disabled={isDisabled}
+        aria-label={`Use ${set.reps ?? "—"} reps at ${set.weight ?? "—"}`}
+      >
+        {formatPreviousSetSummary(set)}
+      </button>
+    );
+
+    items.push(setTile);
+
+    const nextSet = exercise.previous?.sets[index + 1];
+    if (nextSet && nextSet.restSeconds != null) {
+      const formattedRest = formatRest(nextSet.restSeconds);
+      if (formattedRest) {
+        items.push(
+          <span
+            key={`${exercise.workoutExerciseId}-rest-${set.setNumber}`}
+            className="select-none text-[11px] uppercase tracking-[0.12em] text-white/80 italic"
+          >
+            -{formattedRest}-
+          </span>,
+        );
+      }
+    }
+  });
+
+  if (!items.length) {
+    return null;
+  }
+
+  return <div className="flex flex-wrap items-center gap-2">{items}</div>;
+}
 
 const isInteractiveTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
@@ -391,28 +452,10 @@ export function WorkoutExerciseCarousel({
                       <p className="text-xs uppercase tracking-[0.25em] text-white/50">
                         Previous session{previousDate ? ` on ${previousDate}` : ""}
                       </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {exercise.previous.sets.map((set, index) => {
-                          const isDisabled =
-                            set.reps == null ||
-                            set.reps <= 0 ||
-                            set.weight == null ||
-                            Number.isNaN(set.weight);
-
-                          return (
-                            <button
-                              key={`${exercise.workoutExerciseId}-${set.setNumber}-${index}`}
-                              type="button"
-                              onClick={() => fillFormFromPreviousSet(exercise, set)}
-                              className="flex min-w-[52px] items-center justify-center rounded-xl border border-white/12 bg-white/[0.08] px-3 py-1 text-center text-[11px] uppercase tracking-[0.25em] text-white/70 transition hover:border-white/20 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-white/40"
-                              disabled={isDisabled}
-                              aria-label={`Use ${set.reps ?? "—"} reps at ${set.weight ?? "—"}`}
-                            >
-                              {formatPreviousSetSummary(set)}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <PreviousSessionSets
+                        exercise={exercise}
+                        fillFormFromPreviousSet={fillFormFromPreviousSet}
+                      />
                     </div>
                   ) : (
                     <p className="text-xs uppercase tracking-[0.25em] text-white/30">
