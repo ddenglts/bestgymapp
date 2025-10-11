@@ -10,10 +10,15 @@ type LoggedSet = {
   weight: number | null;
 };
 
-type PreviousStat = {
+type PreviousSet = {
+  setNumber: number;
   reps: number | null;
   weight: number | null;
+};
+
+type PreviousStat = {
   completedAt: Date | null;
+  sets: PreviousSet[];
 };
 
 type CarouselExercise = {
@@ -52,6 +57,17 @@ const formatDate = (value: Date | null) => {
     day: "numeric",
     year: "2-digit",
   }).format(value);
+};
+
+const formatPreviousSetSummary = (set: PreviousSet) => {
+  const repsDisplay = set.reps ?? "—";
+  if (set.weight === null || Number.isNaN(set.weight)) {
+    return `${repsDisplay}@BW`;
+  }
+
+  const rounded = Number.parseFloat(set.weight.toString());
+  const weightDisplay = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
+  return `${repsDisplay}@${weightDisplay}`;
 };
 
 const isInteractiveTarget = (target: EventTarget | null) => {
@@ -293,14 +309,21 @@ export function WorkoutExerciseCarousel({
                     </div>
                   </header>
                   {exercise.previous ? (
-                    <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-                      Previous:{" "}
-                      {exercise.previous.reps ?? "—"} reps{" "}
-                      {exercise.previous.weight !== null
-                        ? `@ ${formatWeight(exercise.previous.weight)}`
-                        : "(bodyweight)"}{" "}
-                      {previousDate ? `on ${previousDate}` : ""}
-                    </p>
+                    <div className="flex flex-col gap-2">
+                      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+                        Previous session{previousDate ? ` on ${previousDate}` : ""}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {exercise.previous.sets.map((set, index) => (
+                          <span
+                            key={`${set.setNumber}-${index}`}
+                            className="flex min-w-[52px] items-center justify-center rounded-xl border border-white/12 bg-white/[0.08] px-2 py-1 text-center text-[11px] uppercase tracking-[0.25em] text-white/70"
+                          >
+                            {formatPreviousSetSummary(set)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ) : (
                     <p className="text-xs uppercase tracking-[0.25em] text-white/30">
                       No previous data yet.

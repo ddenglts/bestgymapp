@@ -94,10 +94,15 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
     weight: number | null;
   };
 
-  type PreviousStat = {
+  type PreviousSet = {
+    setNumber: number;
     reps: number | null;
     weight: number | null;
+  };
+
+  type PreviousStat = {
     completedAt: Date | null;
+    sets: PreviousSet[];
   };
 
   const setsByWorkoutExerciseId = new Map<number, LoggedSet[]>();
@@ -155,47 +160,90 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
 
     const previousStats = await Promise.all(
       workoutExercisesRows.map(async (exerciseRow) => {
-        const [previous] = await db
+        const [previousSession] = await db
           .select({
-            reps: exerciseSets.reps,
-            weight: exerciseSets.weight,
+            sessionId: workoutSessions.id,
             completedAt: workoutSessions.completedAt,
           })
-          .from(exerciseSets)
-          .innerJoin(workoutSessions, eq(exerciseSets.sessionId, workoutSessions.id))
+          .from(workoutSessions)
+          .innerJoin(exerciseSets, eq(exerciseSets.sessionId, workoutSessions.id))
           .where(
             and(
               eq(exerciseSets.exerciseId, exerciseRow.exerciseId),
               isNotNull(workoutSessions.completedAt),
             ),
           )
-          .orderBy(desc(workoutSessions.completedAt), desc(exerciseSets.setNumber))
+          .orderBy(desc(workoutSessions.completedAt))
           .limit(1);
 
-        if (!previous) {
+        if (!previousSession?.sessionId) {
           return null;
         }
 
-        const normalizedWeight =
-          previous.weight === null
-            ? null
-            : typeof previous.weight === "number"
-            ? previous.weight
-            : Number(previous.weight);
+        const rawSets = await db
+          .select({
+            setNumber: exerciseSets.setNumber,
+            reps: exerciseSets.reps,
+            weight: exerciseSets.weight,
+          })
+          .from(exerciseSets)
+          .where(
+            and(
+              eq(exerciseSets.sessionId, previousSession.sessionId),
+              eq(exerciseSets.exerciseId, exerciseRow.exerciseId),
+            ),
+          )
+          .orderBy(asc(exerciseSets.setNumber));
+
+        if (rawSets.length === 0) {
+          return null;
+        }
 
         const completedAt =
-          previous.completedAt instanceof Date
-            ? previous.completedAt
-            : previous.completedAt
-            ? new Date(previous.completedAt)
+          previousSession.completedAt instanceof Date
+            ? previousSession.completedAt
+            : previousSession.completedAt
+            ? new Date(previousSession.completedAt)
             : null;
+
+        const sets: PreviousSet[] = rawSets.map((set, index) => {
+          const numericSetNumber =
+            typeof set.setNumber === "number" ? set.setNumber : Number(set.setNumber ?? NaN);
+          const normalizedSetNumber =
+            Number.isFinite(numericSetNumber) && numericSetNumber > 0
+              ? numericSetNumber
+              : index + 1;
+
+          const numericReps =
+            typeof set.reps === "number"
+              ? set.reps
+              : set.reps == null
+              ? null
+              : Number(set.reps);
+          const reps =
+            numericReps == null || Number.isNaN(numericReps) ? null : numericReps;
+
+          const numericWeight =
+            set.weight === null
+              ? null
+              : typeof set.weight === "number"
+              ? set.weight
+              : Number(set.weight);
+          const weight =
+            numericWeight == null || Number.isNaN(numericWeight) ? null : numericWeight;
+
+          return {
+            setNumber: normalizedSetNumber,
+            reps,
+            weight,
+          };
+        });
 
         return {
           exerciseId: exerciseRow.exerciseId,
           stat: {
-            reps: typeof previous.reps === "number" ? previous.reps : previous.reps ?? null,
-            weight: Number.isNaN(normalizedWeight ?? NaN) ? null : normalizedWeight,
             completedAt,
+            sets,
           },
         };
       }),
