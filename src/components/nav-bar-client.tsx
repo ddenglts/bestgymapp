@@ -18,7 +18,7 @@ export function NavBarClient({ links }: NavBarClientProps) {
   return (
     <nav
       aria-label="Primary"
-      className="pointer-events-none fixed inset-x-0 bottom-8 flex justify-center"
+      className="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center"
     >
       <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm backdrop-blur">
         {links.map((link) => {
