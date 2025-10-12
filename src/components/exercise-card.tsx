@@ -14,23 +14,25 @@ export type ExerciseCardData = {
 type ExerciseCardProps = ExerciseCardData;
 
 const formatWeight = (value: number | null) => {
-  if (value === null) {
-    return "";
-  }
+  if (value === null) return "";
 
   const normalized = Number(value);
-  if (!Number.isFinite(normalized)) {
-    return "";
-  }
+  if (!Number.isFinite(normalized)) return "";
 
-  return Number.isInteger(normalized) ? `${normalized}` : normalized.toFixed(1);
+  return Number.isInteger(normalized)
+    ? `${normalized}`
+    : normalized.toFixed(1);
 };
 
 export function ExerciseCard({ name, recentSets }: ExerciseCardProps) {
   return (
     <article className="w-full rounded-3xl border border-white/12 bg-white/[0.05] p-4 shadow-[0_18px_36px_-22px_rgba(0,0,0,0.55)] backdrop-blur transition hover:border-white/20 hover:bg-white/[0.07]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold tracking-tight text-white">{name}</h2>
+      {/* Grid layout for title + sets */}
+      <div className="grid grid-cols-[1fr_auto] items-center gap-3">
+        <h2 className="min-w-0 text-base font-semibold tracking-tight text-white whitespace-normal break-words">
+          {name}
+        </h2>
+
         {recentSets.length > 0 ? (
           <div className="flex flex-wrap justify-end gap-1.5">
             {recentSets.map((set) => {
