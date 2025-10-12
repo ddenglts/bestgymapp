@@ -6,6 +6,7 @@ import { NavBar } from "@/components/nav-bar";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
   viewportFit: "cover", // <- allows content under the notch
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#000000" },
