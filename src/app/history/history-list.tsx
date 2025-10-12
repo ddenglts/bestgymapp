@@ -26,7 +26,7 @@ type HistoryListProps = {
   items: HistoryItem[];
 };
 
-/** ── Formatting helpers ─────────────────────────────────────────────── */
+
 const formatDate = (iso: string | null) => {
   if (!iso) return "Unknown";
   const date = new Date(iso);
