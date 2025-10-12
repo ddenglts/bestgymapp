@@ -63,7 +63,7 @@ const formatSet = (set: HistorySet) => {
   return `${repsText}@${weightText}`;
 };
 
-/** ── Component ──────────────────────────────────────────────────────── */
+
 export function HistoryList({ items }: HistoryListProps) {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
