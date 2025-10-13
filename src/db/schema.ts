@@ -2,13 +2,13 @@ import { pgTable, serial, text, integer, numeric, timestamp } from 'drizzle-orm/
 
 export const exercises = pgTable('exercises', {
   id: serial('id').primaryKey(),
-  name: text('name').notNull(),
+  name: text('name').notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 export const workouts = pgTable('workouts', {
   id: serial('id').primaryKey(),
-  name: text('name').notNull(),
+  name: text('name').notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
