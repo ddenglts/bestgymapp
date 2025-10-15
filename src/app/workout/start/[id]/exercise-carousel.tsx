@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { CSSProperties, TouchEvent, ReactNode } from "react";
+import type { CSSProperties, PointerEvent, ReactNode, FormEvent } from "react";
 
 type LoggedSet = {
   id: number;
@@ -43,21 +43,23 @@ type WorkoutExerciseCarouselProps = {
   setActiveExerciseAction: FormAction;
 };
 
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "numeric",
+  day: "numeric",
+  year: "2-digit",
+});
+
 const formatWeight = (value: number | null) => {
   if (value === null || Number.isNaN(value)) {
     return "Bodyweight";
   }
-  const rounded = Number.parseFloat(value.toString());
+  const rounded = Number(value);
   return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
 };
 
 const formatDate = (value: Date | null) => {
   if (!value) return null;
-  return new Intl.DateTimeFormat("en-US", {
-    month: "numeric",
-    day: "numeric",
-    year: "2-digit",
-  }).format(value);
+  return dateFormatter.format(value);
 };
 
 const formatPreviousSetSummary = (set: PreviousSet) => {
@@ -66,7 +68,7 @@ const formatPreviousSetSummary = (set: PreviousSet) => {
     return `${repsDisplay}@BW`;
   }
 
-  const rounded = Number.parseFloat(set.weight.toString());
+  const rounded = Number(set.weight);
   const weightDisplay = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
   return `${repsDisplay}@${weightDisplay}`;
 };
@@ -79,6 +81,50 @@ const formatRest = (restSeconds: number | null) => {
   const seconds = Math.max(0, restSeconds % 60);
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 };
+
+const formatDuration = (totalSeconds: number | null) => {
+  if (totalSeconds == null || !Number.isFinite(totalSeconds)) {
+    return "00:00";
+  }
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+};
+
+const MIN_PENDING_DISPLAY_MS = 0;
+
+function ExerciseRestTimer({ startTimestamp }: { startTimestamp: number | null }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (startTimestamp == null) {
+      return;
+    }
+
+    setNow(Date.now());
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [startTimestamp]);
+
+  if (startTimestamp == null) {
+    return null;
+  }
+
+  const elapsedSeconds = Math.max(0, Math.floor((now - startTimestamp) / 1000));
+  const display = formatDuration(elapsedSeconds);
+
+  return (
+    <div className="rounded-full border border-white/20 bg-white/[0.08] px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/70 shadow-inner">
+      Rest {display}
+    </div>
+  );
+}
 
 function PreviousSessionSets({
   exercise,
@@ -135,7 +181,7 @@ const isInteractiveTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
     return false;
   }
-  return Boolean(target.closest("input, button, select, textarea"));
+  return Boolean(target.closest("[contenteditable], input, button, select, textarea"));
 };
 
 export function WorkoutExerciseCarousel({
@@ -159,6 +205,15 @@ export function WorkoutExerciseCarousel({
   const startXRef = useRef<number | null>(null);
   const startYRef = useRef<number | null>(null);
   const isDraggingRef = useRef(false);
+  const activePointerIdRef = useRef<number | null>(null);
+  const pointerStartTimeRef = useRef<number | null>(null);
+  const pendingDragOffsetRef = useRef<number | null>(null);
+  const dragAnimationFrameRef = useRef<number | null>(null);
+  const trackContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingStartTimesRef = useRef(new Map<string, number>());
+  const pendingRemovalTimeoutsRef = useRef(new Map<string, number>());
+  const pendingDeleteStartTimesRef = useRef(new Map<number, number>());
+  const pendingDeleteTimeoutsRef = useRef(new Map<number, number>());
 
   const initialIndex = useMemo(() => {
     if (!exercises.length) return 0;
@@ -173,8 +228,14 @@ export function WorkoutExerciseCarousel({
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isUpdatingActive, startActiveTransition] = useTransition();
+  const [pendingExercises, setPendingExercises] = useState<Set<string>>(() => new Set());
+  const [pendingRemovals, setPendingRemovals] = useState<Set<number>>(() => new Set());
+  const [, refreshRestTimers] = useState(0);
   const repsInputRefs = useRef(new Map<number, HTMLInputElement>());
   const weightInputRefs = useRef(new Map<number, HTMLInputElement>());
+  const loggedSetCountsRef = useRef(new Map<number, number>());
+  const lastSetLoggedAtRef = useRef(new Map<number, number>());
+  const lastLoggedSetIdRef = useRef(new Map<number, number>());
 
   useEffect(() => {
     setActiveIndex(initialIndex);
@@ -185,6 +246,31 @@ export function WorkoutExerciseCarousel({
       setActiveIndex(exercises.length > 0 ? exercises.length - 1 : 0);
     }
   }, [activeIndex, exercises.length]);
+
+  useEffect(() => {
+    return () => {
+      if (dragAnimationFrameRef.current != null) {
+        cancelAnimationFrame(dragAnimationFrameRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const removalTimeouts = pendingRemovalTimeoutsRef.current;
+    const deleteTimeouts = pendingDeleteTimeoutsRef.current;
+
+    return () => {
+      removalTimeouts.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      removalTimeouts.clear();
+
+      deleteTimeouts.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      deleteTimeouts.clear();
+    };
+  }, []);
 
   const goToIndex = useCallback(
     (index: number) => {
@@ -206,6 +292,7 @@ export function WorkoutExerciseCarousel({
         const formData = new FormData();
         formData.append("sessionId", String(sessionId));
         formData.append("exerciseId", String(targetExercise.exerciseId));
+        formData.append("workoutExerciseId", String(targetExercise.workoutExerciseId));
 
         startActiveTransition(() => {
           void setActiveExercise(formData);
@@ -225,82 +312,160 @@ export function WorkoutExerciseCarousel({
     goToIndex(activeIndex + 1);
   };
 
-  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length !== 1 || isInteractiveTarget(event.target)) {
-      startXRef.current = null;
-      startYRef.current = null;
+  const flushPendingDragOffset = useCallback(() => {
+    if (pendingDragOffsetRef.current == null) {
       return;
     }
 
-    startXRef.current = event.touches[0].clientX;
-    startYRef.current = event.touches[0].clientY;
+    setDragOffset(pendingDragOffsetRef.current);
+    dragAnimationFrameRef.current = null;
+  }, []);
+
+  const resetPointerTracking = useCallback(() => {
+    if (dragAnimationFrameRef.current != null) {
+      cancelAnimationFrame(dragAnimationFrameRef.current);
+      dragAnimationFrameRef.current = null;
+    }
+
+    pendingDragOffsetRef.current = null;
+    startXRef.current = null;
+    startYRef.current = null;
+    pointerStartTimeRef.current = null;
+    activePointerIdRef.current = null;
     isDraggingRef.current = false;
     setIsDragging(false);
     setDragOffset(0);
-  };
+  }, []);
 
-  const handleTouchMove = (event: TouchEvent<HTMLDivElement>) => {
-    if (startXRef.current === null || startYRef.current === null) {
-      return;
-    }
-
-    const currentX = event.touches[0].clientX;
-    const currentY = event.touches[0].clientY;
-    const deltaX = currentX - startXRef.current;
-    const deltaY = currentY - startYRef.current;
-
-    if (!isDraggingRef.current) {
-      if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
-        isDraggingRef.current = true;
-        setIsDragging(true);
-      } else if (Math.abs(deltaY) > Math.abs(deltaX)) {
-        startXRef.current = null;
-        startYRef.current = null;
-        return;
-      } else {
+  const handlePointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === "mouse" && event.button !== 0) {
         return;
       }
-    }
 
-    event.preventDefault();
-    setDragOffset(deltaX);
-  };
+      if (isInteractiveTarget(event.target)) {
+        return;
+      }
 
-  const handleTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
-    if (startXRef.current === null) {
-      return;
-    }
+      if (dragAnimationFrameRef.current != null) {
+        cancelAnimationFrame(dragAnimationFrameRef.current);
+        dragAnimationFrameRef.current = null;
+      }
 
-    const endX = event.changedTouches[0]?.clientX ?? startXRef.current;
-    const deltaX = endX - startXRef.current;
+      activePointerIdRef.current = event.pointerId;
+      pointerStartTimeRef.current = performance.now();
+      startXRef.current = event.clientX;
+      startYRef.current = event.clientY;
+      pendingDragOffsetRef.current = 0;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      setDragOffset(0);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [],
+  );
 
-    if (isDraggingRef.current) {
+  const handlePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      if (startXRef.current === null || startYRef.current === null) {
+        return;
+      }
+
+      const currentX = event.clientX;
+      const currentY = event.clientY;
+      const deltaX = currentX - startXRef.current;
+      const deltaY = currentY - startYRef.current;
+
+      if (!isDraggingRef.current) {
+        if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+          isDraggingRef.current = true;
+          setIsDragging(true);
+        } else if (Math.abs(deltaY) > Math.abs(deltaX)) {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+          resetPointerTracking();
+          return;
+        } else {
+          return;
+        }
+      }
+
       event.preventDefault();
-    }
+      pendingDragOffsetRef.current = deltaX;
+      if (dragAnimationFrameRef.current == null) {
+        dragAnimationFrameRef.current = window.requestAnimationFrame(flushPendingDragOffset);
+      }
+    },
+    [flushPendingDragOffset, resetPointerTracking],
+  );
 
-    const threshold = 60;
-    if (deltaX > threshold) {
-      goToIndex(activeIndex - 1);
-    } else if (deltaX < -threshold) {
-      goToIndex(activeIndex + 1);
-    } else {
+  const handlePointerUp = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      const startX = startXRef.current;
+      const deltaX = startX != null ? event.clientX - startX : 0;
+
+      const containerWidth =
+        trackContainerRef.current?.clientWidth ?? event.currentTarget.clientWidth ?? 1;
+      const distanceRatio = containerWidth > 0 ? Math.abs(deltaX) / containerWidth : 0;
+      const elapsedMs =
+        pointerStartTimeRef.current != null
+          ? performance.now() - pointerStartTimeRef.current
+          : Number.POSITIVE_INFINITY;
+      const velocity = elapsedMs > 0 ? Math.abs(deltaX) / elapsedMs : 0;
+      const distanceThresholdRatio = 0.2;
+      const distanceThresholdPx = 60;
+      const velocityThreshold = 0.8;
+
+      if (dragAnimationFrameRef.current != null) {
+        cancelAnimationFrame(dragAnimationFrameRef.current);
+        dragAnimationFrameRef.current = null;
+      }
+      pendingDragOffsetRef.current = null;
+
+      if (isDraggingRef.current) {
+        event.preventDefault();
+      }
+
+      const meetsThreshold =
+        distanceRatio > distanceThresholdRatio ||
+        Math.abs(deltaX) > distanceThresholdPx ||
+        velocity > velocityThreshold;
+
+      const targetIndex = meetsThreshold
+        ? deltaX > 0
+          ? activeIndex - 1
+          : activeIndex + 1
+        : activeIndex;
+
+      resetPointerTracking();
+      goToIndex(targetIndex);
+    },
+    [activeIndex, goToIndex, resetPointerTracking],
+  );
+
+  const handlePointerCancel = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      resetPointerTracking();
       goToIndex(activeIndex);
-    }
-
-    setDragOffset(0);
-    setIsDragging(false);
-    startXRef.current = null;
-    startYRef.current = null;
-    isDraggingRef.current = false;
-  };
-
-  const handleTouchCancel = () => {
-    setDragOffset(0);
-    setIsDragging(false);
-    startXRef.current = null;
-    startYRef.current = null;
-    isDraggingRef.current = false;
-  };
+    },
+    [activeIndex, goToIndex, resetPointerTracking],
+  );
 
   const assignRepsInputRef = useCallback(
     (exerciseKey: number) => (node: HTMLInputElement | null) => {
@@ -378,6 +543,267 @@ export function WorkoutExerciseCarousel({
     });
   }, []);
 
+  const handleLogSetSubmit = useCallback(
+    (exerciseId: number) => (event: FormEvent<HTMLFormElement>) => {
+      void event;
+      const pendingKey = String(exerciseId);
+      setPendingExercises((prev) => {
+        const next = new Set(prev);
+        next.add(pendingKey);
+        return next;
+      });
+
+      pendingStartTimesRef.current.set(pendingKey, performance.now());
+      const existingTimeout = pendingRemovalTimeoutsRef.current.get(pendingKey);
+      if (existingTimeout != null) {
+        window.clearTimeout(existingTimeout);
+        pendingRemovalTimeoutsRef.current.delete(pendingKey);
+      }
+    },
+    [],
+  );
+
+  const handleDeleteSetSubmit = useCallback(
+    (setId: number) => (event: FormEvent<HTMLFormElement>) => {
+      void event;
+      setPendingRemovals((prev) => {
+        const next = new Set(prev);
+        next.add(setId);
+        return next;
+      });
+
+      pendingDeleteStartTimesRef.current.set(setId, performance.now());
+      const existingTimeout = pendingDeleteTimeoutsRef.current.get(setId);
+      if (existingTimeout != null) {
+        window.clearTimeout(existingTimeout);
+        pendingDeleteTimeoutsRef.current.delete(setId);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const knownExerciseIds = new Set<number>();
+    const pendingKeysToClearNow: string[] = [];
+    const pendingKeysToClearLater: Array<{ key: string; delay: number }> = [];
+    const availableSetIds = new Set<number>();
+    let restTimestampChanged = false;
+
+    exercises.forEach((exercise, index) => {
+      knownExerciseIds.add(exercise.workoutExerciseId);
+
+      const repsInput = repsInputRefs.current.get(exercise.workoutExerciseId);
+      const weightInput = weightInputRefs.current.get(exercise.workoutExerciseId);
+      const previousCount = loggedSetCountsRef.current.get(exercise.workoutExerciseId) ?? 0;
+      const nextCount = exercise.sets.length;
+      const lastSet = nextCount > 0 ? exercise.sets[nextCount - 1] : null;
+      exercise.sets.forEach((set) => {
+        availableSetIds.add(set.id);
+      });
+      const previousLastSetId = lastLoggedSetIdRef.current.get(exercise.workoutExerciseId) ?? null;
+      const currentLastSetId = lastSet?.id ?? null;
+
+      const isActiveExercise = index === activeIndex;
+      const hasCountChanged = nextCount !== previousCount;
+      const lastSetChanged = previousLastSetId !== currentLastSetId;
+      const shouldUpdateInputs = isActiveExercise || hasCountChanged || lastSetChanged;
+
+      if (shouldUpdateInputs) {
+        if (nextCount > 0 && lastSet) {
+          if (repsInput) {
+            if (lastSet.reps != null && lastSet.reps > 0) {
+              const nextRepsValue = String(lastSet.reps);
+              if (repsInput.value !== nextRepsValue) {
+                repsInput.value = nextRepsValue;
+                repsInput.dispatchEvent(new Event("input", { bubbles: true }));
+              }
+            } else if (repsInput.value !== "") {
+              repsInput.value = "";
+              repsInput.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          }
+
+          if (weightInput) {
+            const weightValue = lastSet.weight;
+            const hasWeight = weightValue != null && !Number.isNaN(weightValue);
+            const nextWeightValue = hasWeight ? String(weightValue) : "";
+
+            if (weightInput.value !== nextWeightValue) {
+              weightInput.value = nextWeightValue;
+              weightInput.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          }
+        } else if (hasCountChanged && nextCount === 0) {
+          if (repsInput && repsInput.value !== "") {
+            repsInput.value = "";
+            repsInput.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+
+          if (weightInput && weightInput.value !== "") {
+            weightInput.value = "";
+            weightInput.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        }
+      }
+
+      if (currentLastSetId != null) {
+        if (
+          previousLastSetId == null ||
+          previousLastSetId !== currentLastSetId ||
+          nextCount > previousCount
+        ) {
+          lastSetLoggedAtRef.current.set(exercise.workoutExerciseId, Date.now());
+          restTimestampChanged = true;
+        }
+        lastLoggedSetIdRef.current.set(exercise.workoutExerciseId, currentLastSetId);
+      } else {
+        lastLoggedSetIdRef.current.delete(exercise.workoutExerciseId);
+        if (lastSetLoggedAtRef.current.delete(exercise.workoutExerciseId)) {
+          restTimestampChanged = true;
+        }
+      }
+
+      loggedSetCountsRef.current.set(exercise.workoutExerciseId, nextCount);
+
+      const pendingKey = String(exercise.workoutExerciseId);
+      if (pendingExercises.has(pendingKey) && (hasCountChanged || lastSetChanged)) {
+        const startTime = pendingStartTimesRef.current.get(pendingKey);
+        const elapsed = startTime != null ? performance.now() - startTime : MIN_PENDING_DISPLAY_MS;
+
+        if (elapsed >= MIN_PENDING_DISPLAY_MS) {
+          pendingKeysToClearNow.push(pendingKey);
+        } else {
+          pendingKeysToClearLater.push({ key: pendingKey, delay: MIN_PENDING_DISPLAY_MS - elapsed });
+        }
+      }
+    });
+
+    for (const exerciseId of Array.from(loggedSetCountsRef.current.keys())) {
+      if (!knownExerciseIds.has(exerciseId)) {
+        loggedSetCountsRef.current.delete(exerciseId);
+        if (lastSetLoggedAtRef.current.delete(exerciseId)) {
+          restTimestampChanged = true;
+        }
+        lastLoggedSetIdRef.current.delete(exerciseId);
+
+        const pendingKey = String(exerciseId);
+        if (pendingExercises.has(pendingKey)) {
+          pendingKeysToClearNow.push(pendingKey);
+        }
+      }
+    }
+
+    if (pendingRemovals.size > 0) {
+      const removalKeysToClearNow: number[] = [];
+      const removalKeysToClearLater: Array<{ id: number; delay: number }> = [];
+
+      pendingRemovals.forEach((setId) => {
+        if (!availableSetIds.has(setId)) {
+          const startTime = pendingDeleteStartTimesRef.current.get(setId);
+          const elapsed =
+            startTime != null ? performance.now() - startTime : MIN_PENDING_DISPLAY_MS;
+
+          if (elapsed >= MIN_PENDING_DISPLAY_MS) {
+            removalKeysToClearNow.push(setId);
+          } else {
+            removalKeysToClearLater.push({ id: setId, delay: MIN_PENDING_DISPLAY_MS - elapsed });
+          }
+        }
+      });
+
+      if (removalKeysToClearNow.length > 0) {
+        setPendingRemovals((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          removalKeysToClearNow.forEach((setId) => {
+            if (next.delete(setId)) {
+              changed = true;
+            }
+            pendingDeleteStartTimesRef.current.delete(setId);
+            const timeoutId = pendingDeleteTimeoutsRef.current.get(setId);
+            if (timeoutId != null) {
+              window.clearTimeout(timeoutId);
+              pendingDeleteTimeoutsRef.current.delete(setId);
+            }
+          });
+          return changed ? next : prev;
+        });
+      }
+
+      if (removalKeysToClearLater.length > 0) {
+        removalKeysToClearLater.forEach(({ id, delay }) => {
+          const existingTimeout = pendingDeleteTimeoutsRef.current.get(id);
+          if (existingTimeout != null) {
+            window.clearTimeout(existingTimeout);
+          }
+
+          const timeoutId = window.setTimeout(() => {
+            pendingDeleteTimeoutsRef.current.delete(id);
+            pendingDeleteStartTimesRef.current.delete(id);
+            setPendingRemovals((prev) => {
+              if (!prev.has(id)) {
+                return prev;
+              }
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+          }, delay);
+
+          pendingDeleteTimeoutsRef.current.set(id, timeoutId);
+        });
+      }
+    }
+
+    if (pendingKeysToClearNow.length > 0) {
+      setPendingExercises((prev) => {
+        if (pendingKeysToClearNow.every((key) => !prev.has(key))) {
+          return prev;
+        }
+
+        const next = new Set(prev);
+        pendingKeysToClearNow.forEach((key) => {
+          next.delete(key);
+          pendingStartTimesRef.current.delete(key);
+          const timeoutId = pendingRemovalTimeoutsRef.current.get(key);
+          if (timeoutId != null) {
+            window.clearTimeout(timeoutId);
+            pendingRemovalTimeoutsRef.current.delete(key);
+          }
+        });
+        return next;
+      });
+    }
+
+    if (pendingKeysToClearLater.length > 0) {
+      pendingKeysToClearLater.forEach(({ key, delay }) => {
+        const existingTimeout = pendingRemovalTimeoutsRef.current.get(key);
+        if (existingTimeout != null) {
+          window.clearTimeout(existingTimeout);
+        }
+
+        const timeoutId = window.setTimeout(() => {
+          pendingRemovalTimeoutsRef.current.delete(key);
+          pendingStartTimesRef.current.delete(key);
+          setPendingExercises((prev) => {
+            if (!prev.has(key)) {
+              return prev;
+            }
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        }, delay);
+
+        pendingRemovalTimeoutsRef.current.set(key, timeoutId);
+      });
+    }
+
+    if (restTimestampChanged) {
+      refreshRestTimers((value) => value + 1);
+    }
+  }, [activeIndex, exercises, pendingExercises, pendingRemovals, refreshRestTimers]);
+
   const trackStyle = useMemo<CSSProperties>(() => {
     const translate = `calc(-${activeIndex * 100}% + ${dragOffset}px)`;
     return {
@@ -420,11 +846,12 @@ export function WorkoutExerciseCarousel({
         </div>
       </div>
       <div
+        ref={trackContainerRef}
         className="relative flex overflow-hidden touch-pan-y"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchCancel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
         <div
           className="flex w-full"
@@ -432,6 +859,12 @@ export function WorkoutExerciseCarousel({
         >
           {exercises.map((exercise) => {
             const previousDate = formatDate(exercise.previous?.completedAt ?? null);
+            const hasLoggedSets = exercise.sets.length > 0;
+            const isLoggingSet = pendingExercises.has(String(exercise.workoutExerciseId));
+            const storedRestStartTimestamp =
+              lastSetLoggedAtRef.current.get(exercise.workoutExerciseId) ?? null;
+            const restStartTimestamp =
+              storedRestStartTimestamp ?? (hasLoggedSets ? Date.now() : null);
 
             return (
               <article
@@ -470,36 +903,61 @@ export function WorkoutExerciseCarousel({
                       <p className="text-xs text-white/40">No sets logged yet.</p>
                     ) : (
                       <ul className="flex flex-col gap-2 text-sm text-white/80">
-                        {exercise.sets.map((set) => (
-                          <li
-                            key={set.id}
-                            className="flex items-center justify-between gap-3 rounded-2xl border border-white/12 bg-white/[0.06] px-3.5 py-2.5"
-                          >
-                            <div className="flex flex-col gap-1">
-                              <span>
-                                {set.reps ?? "—"} reps{" "}
-                                {set.weight !== null
-                                  ? `@ ${formatWeight(set.weight)}`
-                                  : "(bodyweight)"}
-                              </span>
-                            </div>
-                            <form action={deleteSet}>
-                              <input type="hidden" name="workoutId" value={String(workoutId)} />
-                              <input type="hidden" name="setId" value={String(set.id)} />
-                              <button
-                                type="submit"
-                                className="text-[11px] uppercase tracking-[0.3em] text-white/50 transition hover:text-white/80"
+                        {exercise.sets.map((set) => {
+                          const isRemovingSet = pendingRemovals.has(set.id);
+
+                          return (
+                            <li
+                              key={set.id}
+                              className="flex items-center justify-between gap-3 rounded-2xl border border-white/12 bg-white/[0.06] px-3.5 py-2.5"
+                            >
+                              <div className="flex flex-col gap-1">
+                                <span>
+                                  {set.reps ?? "—"} reps{" "}
+                                  {set.weight !== null
+                                    ? `@ ${formatWeight(set.weight)}`
+                                    : "(bodyweight)"}
+                                </span>
+                              </div>
+                              <form
+                                action={deleteSet}
+                                onSubmit={handleDeleteSetSubmit(set.id)}
                               >
-                                Remove
-                              </button>
-                            </form>
-                          </li>
-                        ))}
+                                <input type="hidden" name="workoutId" value={String(workoutId)} />
+                                <input type="hidden" name="setId" value={String(set.id)} />
+                                <button
+                                  type="submit"
+                                  disabled={isRemovingSet}
+                                  aria-disabled={isRemovingSet}
+                                  aria-busy={isRemovingSet}
+                                  className={`inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.3em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
+                                    isRemovingSet
+                                      ? "cursor-wait text-white/60"
+                                      : "text-white/50 hover:text-white/80"
+                                  }`}
+                                >
+                                  {isRemovingSet ? (
+                                    <>
+                                      <span
+                                        aria-hidden="true"
+                                        className="h-3 w-3 rounded-full border border-white/60 border-b-transparent border-r-transparent animate-spin"
+                                      />
+                                      Removing…
+                                    </>
+                                  ) : (
+                                    "Remove"
+                                  )}
+                                </button>
+                              </form>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </section>
                   <form
                     action={logSet}
+                    onSubmit={handleLogSetSubmit(exercise.workoutExerciseId)}
                     className="mt-auto flex flex-col gap-3 rounded-2xl border border-white/12 bg-white/[0.06] p-4"
                   >
                     <input type="hidden" name="workoutId" value={String(workoutId)} />
@@ -561,12 +1019,38 @@ export function WorkoutExerciseCarousel({
                         </div>
                       </label>
                     </div>
-                    <button
-                      type="submit"
-                      className="self-end rounded-full border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-100 transition hover:border-emerald-300 hover:bg-emerald-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40"
+                    <div
+                      className={`flex items-center gap-3 ${
+                        hasLoggedSets ? "justify-between" : "justify-end"
+                      }`}
                     >
-                      Log set
-                    </button>
+                      {hasLoggedSets ? (
+                        <ExerciseRestTimer startTimestamp={restStartTimestamp} />
+                      ) : null}
+                      <button
+                        type="submit"
+                        disabled={isLoggingSet}
+                        aria-disabled={isLoggingSet}
+                        aria-busy={isLoggingSet}
+                        className={`inline-flex items-center gap-2 rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40 ${
+                          isLoggingSet
+                            ? "cursor-wait bg-emerald-500/10 text-emerald-100"
+                            : "bg-emerald-500/20 text-emerald-100 hover:border-emerald-300 hover:bg-emerald-500/30"
+                        }`}
+                      >
+                        {isLoggingSet ? (
+                          <>
+                            <span
+                              aria-hidden="true"
+                              className="h-3.5 w-3.5 rounded-full border border-emerald-200/60 border-b-transparent border-r-transparent animate-spin"
+                            />
+                            Logging…
+                          </>
+                        ) : (
+                          "Log set"
+                        )}
+                      </button>
+                    </div>
                   </form>
                 </div>
               </article>
@@ -575,19 +1059,24 @@ export function WorkoutExerciseCarousel({
         </div>
       </div>
       <div className="flex justify-center gap-2">
-        {exercises.map((exercise, index) => (
-          <button
-            key={exercise.workoutExerciseId}
-            type="button"
-            onClick={() => goToIndex(index)}
-            className={`h-2 w-2 rounded-full ${
-              index === activeIndex ? "bg-white" : "bg-white/30"
-            }`}
-            aria-label={`Go to exercise ${index + 1}`}
-            aria-pressed={index === activeIndex}
-            disabled={isUpdatingActive}
-          />
-        ))}
+        {exercises.map((exercise, index) => {
+          const loggedAtLeastThreeSets = exercise.sets.length >= 3;
+          const baseColor = loggedAtLeastThreeSets ? "bg-emerald-400/70" : "bg-white/30";
+          const activeColor = loggedAtLeastThreeSets ? "bg-emerald-400" : "bg-white";
+
+          return (
+            <button
+              key={exercise.workoutExerciseId}
+              type="button"
+              onClick={() => goToIndex(index)}
+              className={`h-2 w-2 rounded-full ${index === activeIndex ? activeColor : baseColor}`}
+              aria-label={`Go to exercise ${index + 1}`}
+              aria-pressed={index === activeIndex}
+              aria-current={index === activeIndex ? "true" : undefined}
+              disabled={isUpdatingActive}
+            />
+          );
+        })}
       </div>
     </div>
   );
