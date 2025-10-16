@@ -1,4 +1,4 @@
-'use server';
+"use server";
 
 import { revalidatePath } from "next/cache";
 import { and, asc, eq, sql } from "drizzle-orm";
@@ -9,13 +9,49 @@ import {
   workoutExercises,
   workoutSessions,
 } from "@/db/schema";
+import { CURRENT_WORKOUT_TOAST_KEY } from "./toast-constants";
 
-export async function startWorkout(formData: FormData) {
+export type StartWorkoutResult =
+  | {
+      status: "redirect";
+      redirectTo: string;
+      message: string;
+      storageKey: typeof CURRENT_WORKOUT_TOAST_KEY;
+    }
+  | {
+      status: "started";
+    };
+
+export async function startWorkout(formData: FormData): Promise<StartWorkoutResult> {
   const rawWorkoutId = formData.get("workoutId");
   const workoutId = Number(typeof rawWorkoutId === "string" ? rawWorkoutId : "");
 
   if (!Number.isFinite(workoutId) || workoutId <= 0) {
     throw new Error("Invalid workout.");
+  }
+
+  const [existing] = await db
+    .select({
+      sessionId: currentWorkout.sessionId,
+      workoutId: workoutSessions.workoutId,
+    })
+    .from(currentWorkout)
+    .leftJoin(workoutSessions, eq(workoutSessions.id, currentWorkout.sessionId))
+    .limit(1);
+
+  if (existing?.sessionId && existing.workoutId) {
+    const redirectTo = `/workout/start/${existing.workoutId}`;
+    const message =
+      existing.workoutId === workoutId
+        ? "You already have this workout in progress."
+        : "Resuming your current workout session.";
+
+    return {
+      status: "redirect",
+      redirectTo,
+      message,
+      storageKey: CURRENT_WORKOUT_TOAST_KEY,
+    };
   }
 
   const [session] = await db
@@ -49,6 +85,10 @@ export async function startWorkout(formData: FormData) {
   revalidatePath(`/workout/start/${workoutId}`, "page");
   revalidatePath("/workout");
   revalidatePath("/", "layout");
+
+  return {
+    status: "started",
+  };
 }
 
 export async function endWorkout(formData: FormData) {

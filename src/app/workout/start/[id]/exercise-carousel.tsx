@@ -8,6 +8,7 @@ type LoggedSet = {
   setNumber: number;
   reps: number | null;
   weight: number | null;
+  loggedAtMs: number;
 };
 
 type PreviousSet = {
@@ -303,14 +304,6 @@ export function WorkoutExerciseCarousel({
     },
     [activeIndex, exercises, sessionId, setActiveExercise, startActiveTransition],
   );
-
-  const handlePrevious = () => {
-    goToIndex(activeIndex - 1);
-  };
-
-  const handleNext = () => {
-    goToIndex(activeIndex + 1);
-  };
 
   const flushPendingDragOffset = useCallback(() => {
     if (pendingDragOffsetRef.current == null) {
@@ -646,21 +639,25 @@ export function WorkoutExerciseCarousel({
         }
       }
 
-      if (currentLastSetId != null) {
-        if (
-          previousLastSetId == null ||
-          previousLastSetId !== currentLastSetId ||
-          nextCount > previousCount
-        ) {
-          lastSetLoggedAtRef.current.set(exercise.workoutExerciseId, Date.now());
+      const previousRestTimestamp =
+        lastSetLoggedAtRef.current.get(exercise.workoutExerciseId) ?? null;
+      const nextRestTimestamp =
+        lastSet && Number.isFinite(lastSet.loggedAtMs) ? Math.floor(lastSet.loggedAtMs) : null;
+
+      if (nextRestTimestamp != null) {
+        if (previousRestTimestamp == null || previousRestTimestamp !== nextRestTimestamp) {
+          lastSetLoggedAtRef.current.set(exercise.workoutExerciseId, nextRestTimestamp);
           restTimestampChanged = true;
         }
+      } else if (previousRestTimestamp != null) {
+        lastSetLoggedAtRef.current.delete(exercise.workoutExerciseId);
+        restTimestampChanged = true;
+      }
+
+      if (currentLastSetId != null) {
         lastLoggedSetIdRef.current.set(exercise.workoutExerciseId, currentLastSetId);
       } else {
         lastLoggedSetIdRef.current.delete(exercise.workoutExerciseId);
-        if (lastSetLoggedAtRef.current.delete(exercise.workoutExerciseId)) {
-          restTimestampChanged = true;
-        }
       }
 
       loggedSetCountsRef.current.set(exercise.workoutExerciseId, nextCount);
@@ -826,24 +823,6 @@ export function WorkoutExerciseCarousel({
         <span>
           Exercise {activeIndex + 1} of {exercises.length}
         </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handlePrevious}
-            className="rounded-full border border-white/20 px-2 py-1 text-white/70 transition hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={activeIndex === 0 || isUpdatingActive}
-          >
-            &lt;
-          </button>
-          <button
-            type="button"
-            onClick={handleNext}
-            className="rounded-full border border-white/20 px-2 py-1 text-white/70 transition hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={activeIndex === exercises.length - 1 || isUpdatingActive}
-          >
-            &gt;
-          </button>
-        </div>
       </div>
       <div
         ref={trackContainerRef}
@@ -861,10 +840,14 @@ export function WorkoutExerciseCarousel({
             const previousDate = formatDate(exercise.previous?.completedAt ?? null);
             const hasLoggedSets = exercise.sets.length > 0;
             const isLoggingSet = pendingExercises.has(String(exercise.workoutExerciseId));
+            const lastSet = hasLoggedSets ? exercise.sets[exercise.sets.length - 1] : null;
             const storedRestStartTimestamp =
               lastSetLoggedAtRef.current.get(exercise.workoutExerciseId) ?? null;
             const restStartTimestamp =
-              storedRestStartTimestamp ?? (hasLoggedSets ? Date.now() : null);
+              storedRestStartTimestamp ??
+              (lastSet && Number.isFinite(lastSet.loggedAtMs)
+                ? Math.floor(lastSet.loggedAtMs)
+                : null);
 
             return (
               <article

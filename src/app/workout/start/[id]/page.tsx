@@ -14,9 +14,10 @@ import {
   endWorkout,
   logExerciseSet,
   setActiveExercise,
-  startWorkout,
 } from "./actions";
 import { WorkoutExerciseCarousel } from "./exercise-carousel";
+import { CurrentWorkoutToast } from "./current-workout-toast";
+import { StartWorkoutButton } from "./start-workout-button";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
     setNumber: number;
     reps: number | null;
     weight: number | null;
+    loggedAtMs: number;
   };
 
   type PreviousSet = {
@@ -111,6 +113,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
         setNumber: exerciseSets.setNumber,
         reps: exerciseSets.reps,
         weight: exerciseSets.weight,
+        loggedAt: exerciseSets.loggedAt,
       })
       .from(exerciseSets)
       .where(eq(exerciseSets.sessionId, activeSessionId))
@@ -137,6 +140,8 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
           : set.reps === null || set.reps === undefined
           ? null
           : Number(set.reps);
+      const loggedAt =
+        set.loggedAt instanceof Date ? set.loggedAt : new Date(set.loggedAt ?? Date.now());
 
       const workoutExerciseId = set.workoutExerciseId;
       const list = setsByWorkoutExerciseId.get(workoutExerciseId) ?? [];
@@ -145,6 +150,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
         setNumber: normalizedSetNumber || list.length + 1,
         reps: Number.isNaN(normalizedReps ?? NaN) ? null : normalizedReps,
         weight: Number.isNaN(normalizedWeight ?? NaN) ? null : normalizedWeight,
+        loggedAtMs: loggedAt.getTime(),
       });
       setsByWorkoutExerciseId.set(workoutExerciseId, list);
     }
@@ -296,6 +302,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
 
   return (
     <section className="flex w-full flex-1 flex-col gap-4 px-4 pb-5 pt-3 text-white">
+      <CurrentWorkoutToast />
       <header className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -337,23 +344,13 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
             {new Intl.DateTimeFormat("en-US", {
               hour: "numeric",
               minute: "numeric",
+              timeZone: "America/New_York",
             }).format(activeSessionStartedAt)}
+
           </p>
         ) : null}
         {isActiveSessionForWorkout && activeSessionId ? null : (
-          <form action={startWorkout}>
-            <input
-              type="hidden"
-              name="workoutId"
-              value={String(workoutRow.id)}
-            />
-            <button
-              type="submit"
-              className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-100 transition hover:border-emerald-300 hover:bg-emerald-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40"
-            >
-              Start workout
-            </button>
-          </form>
+          <StartWorkoutButton workoutId={workoutRow.id} />
         )}
       </div>
       {isActiveSessionForWorkout && activeSessionId ? (
