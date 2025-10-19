@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from "next/cache";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { exercises, workoutExercises, workouts } from "@/db/schema";
 
@@ -55,7 +55,7 @@ export async function addExerciseToWorkout({
   }
 
   const existing = await db
-    .select({ id: workoutExercises.id })
+    .select({ id: workoutExercises.id, order: workoutExercises.order })
     .from(workoutExercises)
     .where(
       and(
@@ -136,6 +136,113 @@ export async function removeWorkoutExercise({ id }: RemoveWorkoutExerciseInput) 
 
   if (deleted.length === 0) {
     throw new Error("Exercise not found in workout.");
+  }
+
+  revalidatePath("/");
+}
+
+type ReorderWorkoutExercisesInput = {
+  workoutId: number;
+  orderedExerciseIds: number[];
+};
+
+export async function reorderWorkoutExercises({
+  workoutId,
+  orderedExerciseIds,
+}: ReorderWorkoutExercisesInput) {
+  if (!Number.isInteger(workoutId) || workoutId <= 0) {
+    throw new Error("Invalid workout.");
+  }
+
+  if (orderedExerciseIds.length === 0) {
+    return;
+  }
+
+  const uniqueIds = new Set(orderedExerciseIds);
+
+  if (uniqueIds.size !== orderedExerciseIds.length) {
+    throw new Error("Invalid exercise ordering.");
+  }
+
+  const existing = await db
+    .select({ id: workoutExercises.id })
+    .from(workoutExercises)
+    .where(eq(workoutExercises.workoutId, workoutId))
+    .orderBy(asc(workoutExercises.order));
+
+  if (existing.length !== orderedExerciseIds.length) {
+    throw new Error("Exercises have changed. Refresh and try again.");
+  }
+
+  const existingIds = existing.map((row) => row.id);
+  const existingIdSet = new Set(existingIds);
+
+  for (const id of orderedExerciseIds) {
+    if (!existingIdSet.has(id)) {
+      throw new Error("Exercises have changed. Refresh and try again.");
+    }
+  }
+
+  const isSameOrder = existingIds.every(
+    (id, index) => id === orderedExerciseIds[index],
+  );
+
+  if (isSameOrder) {
+    return;
+  }
+
+  const maxExistingOrder = existing.reduce(
+    (max, row) => (row.order > max ? row.order : max),
+    0,
+  );
+  const offset = maxExistingOrder + orderedExerciseIds.length + 1;
+
+  const buildCaseExpression = (pairs: { id: number; order: number }[]) => {
+    const fragments = pairs.map(
+      ({ id, order }) => sql`WHEN ${workoutExercises.id} = ${id} THEN ${order}`,
+    );
+
+    return sql<number>`
+      CASE
+        ${sql.join(fragments, sql.raw(" "))}
+        ELSE ${workoutExercises.order}
+      END
+    `;
+  };
+
+  const targetWhereClause = and(
+    eq(workoutExercises.workoutId, workoutId),
+    inArray(workoutExercises.id, orderedExerciseIds),
+  );
+
+  await db
+    .update(workoutExercises)
+    .set({
+      order: sql`${workoutExercises.order} + ${offset}`,
+    })
+    .where(targetWhereClause);
+
+  const desiredOrder = orderedExerciseIds.map((id, index) => ({
+    id,
+    order: index + 1,
+  }));
+
+  try {
+    await db
+      .update(workoutExercises)
+      .set({
+        order: buildCaseExpression(desiredOrder),
+      })
+      .where(targetWhereClause);
+  } catch (error) {
+    await db
+      .update(workoutExercises)
+      .set({
+        order: buildCaseExpression(existing),
+      })
+      .where(targetWhereClause);
+
+    throw error;
   }
 
   revalidatePath("/");

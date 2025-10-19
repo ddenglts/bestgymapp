@@ -1,11 +1,17 @@
 'use client';
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { FormEvent } from "react";
 import { WorkoutCard } from "@/components/workout-card";
 import { WorkoutComposer } from "@/components/workout-composer";
 import { Toast } from "@/components/toast";
-import { addExerciseToWorkout, createWorkout, deleteWorkout } from "./actions";
+import {
+  addExerciseToWorkout,
+  createWorkout,
+  deleteWorkout,
+  removeWorkoutExercise,
+  reorderWorkoutExercises,
+} from "./actions";
 import {
   SwipeableList,
   SwipeableListItem,
@@ -47,6 +53,14 @@ export function WorkoutsView({
   const [isPending, startTransition] = useTransition();
   const [openWorkoutId, setOpenWorkoutId] = useState<number | null>(null);
   const [pendingAddWorkoutId, setPendingAddWorkoutId] = useState<number | null>(null);
+  const [pendingDeleteExerciseIds, setPendingDeleteExerciseIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const [pendingReorderExerciseIds, setPendingReorderExerciseIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const [pendingDeleteConfirmId, setPendingDeleteConfirmId] = useState<number | null>(null);
+  const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
 
   const dismissToast = useCallback(() => setErrorMessage(null), []);
@@ -151,6 +165,154 @@ export function WorkoutsView({
     setPendingAddWorkoutId(null);
   };
 
+  const clearDeleteConfirmation = () => {
+    if (deleteConfirmTimeoutRef.current) {
+      clearTimeout(deleteConfirmTimeoutRef.current);
+      deleteConfirmTimeoutRef.current = null;
+    }
+    setPendingDeleteConfirmId(null);
+  };
+
+  const handleDeleteExercise = (workoutId: number, workoutExerciseId: number) => {
+    setErrorMessage(null);
+
+    setPendingDeleteExerciseIds((prev) => {
+      if (prev.has(workoutExerciseId)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(workoutExerciseId);
+      return next;
+    });
+
+    removeWorkoutExercise({ id: workoutExerciseId })
+      .then(() => {
+        setWorkouts((prev) =>
+          prev.map((workout) =>
+            workout.id === workoutId
+              ? {
+                  ...workout,
+                  exercises: workout.exercises.filter(
+                    (exercise) => exercise.id !== workoutExerciseId,
+                  ),
+                }
+              : workout,
+          ),
+        );
+      })
+      .catch((error) => {
+        setErrorMessage(error instanceof Error ? error.message : "Something went wrong.");
+      })
+      .finally(() => {
+        clearDeleteConfirmation();
+        setPendingDeleteExerciseIds((prev) => {
+          if (!prev.has(workoutExerciseId)) {
+            return prev;
+          }
+          const next = new Set(prev);
+          next.delete(workoutExerciseId);
+          return next;
+        });
+      });
+  };
+
+  const handleDeleteClick = (workoutId: number, workoutExerciseId: number) => {
+    if (pendingDeleteConfirmId === workoutExerciseId) {
+      clearDeleteConfirmation();
+      handleDeleteExercise(workoutId, workoutExerciseId);
+      return;
+    }
+
+    if (deleteConfirmTimeoutRef.current) {
+      clearTimeout(deleteConfirmTimeoutRef.current);
+    }
+
+    setPendingDeleteConfirmId(workoutExerciseId);
+    deleteConfirmTimeoutRef.current = setTimeout(() => {
+      deleteConfirmTimeoutRef.current = null;
+      setPendingDeleteConfirmId((current) =>
+        current === workoutExerciseId ? null : current,
+      );
+    }, 2500);
+  };
+
+  const handleMoveExercise = (
+    workoutId: number,
+    workoutExerciseId: number,
+    direction: "up" | "down",
+  ) => {
+    setErrorMessage(null);
+
+    const workout = workouts.find((item) => item.id === workoutId);
+    if (!workout) {
+      return;
+    }
+
+    const previousOrder = [...workout.exercises];
+    const currentIndex = previousOrder.findIndex(
+      (exercise) => exercise.id === workoutExerciseId,
+    );
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= previousOrder.length) {
+      return;
+    }
+
+    const neighborExerciseId = previousOrder[targetIndex].id;
+
+    const updatedOrder = [...previousOrder];
+    [updatedOrder[currentIndex], updatedOrder[targetIndex]] = [
+      updatedOrder[targetIndex],
+      updatedOrder[currentIndex],
+    ];
+
+    setPendingReorderExerciseIds((prev) => {
+      const next = new Set(prev);
+      next.add(workoutExerciseId);
+      next.add(neighborExerciseId);
+      return next;
+    });
+
+    setWorkouts((prev) =>
+      prev.map((item) =>
+        item.id === workoutId ? { ...item, exercises: updatedOrder } : item,
+      ),
+    );
+
+    const orderedExerciseIds = updatedOrder.map((exercise) => exercise.id);
+
+    reorderWorkoutExercises({ workoutId, orderedExerciseIds })
+      .catch((error) => {
+        setErrorMessage(error instanceof Error ? error.message : "Something went wrong.");
+        setWorkouts((prev) =>
+          prev.map((item) =>
+            item.id === workoutId ? { ...item, exercises: previousOrder } : item,
+          ),
+        );
+      })
+      .finally(() => {
+        setPendingReorderExerciseIds((prev) => {
+          const next = new Set(prev);
+          next.delete(workoutExerciseId);
+          next.delete(neighborExerciseId);
+          return next;
+        });
+      });
+  };
+
+  useEffect(
+    () => () => {
+      if (deleteConfirmTimeoutRef.current) {
+        clearTimeout(deleteConfirmTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
   const handleDeleteWorkout = async (workoutId: number) => {
     setErrorMessage(null);
 
@@ -182,6 +344,18 @@ export function WorkoutsView({
               const isAdding = openWorkoutId === workout.id;
               const isSubmitting = pendingAddWorkoutId === workout.id;
               const workoutExercises = workout.exercises;
+              const exerciseItems = workoutExercises.map((exercise, index) => ({
+                id: exercise.id,
+                name: exercise.name,
+                onDelete: () => handleDeleteClick(workout.id, exercise.id),
+                isDeleting: pendingDeleteExerciseIds.has(exercise.id),
+                isAwaitingDeleteConfirm: pendingDeleteConfirmId === exercise.id,
+                onMoveUp: () => handleMoveExercise(workout.id, exercise.id, "up"),
+                onMoveDown: () => handleMoveExercise(workout.id, exercise.id, "down"),
+                canMoveUp: index > 0,
+                canMoveDown: index < workoutExercises.length - 1,
+                isMoving: pendingReorderExerciseIds.has(exercise.id),
+              }));
 
               const footerContent = isAdding ? (
                 <form
@@ -189,29 +363,29 @@ export function WorkoutsView({
                   className="flex max-w-[220px] flex-col gap-1.5 rounded-2xl border border-dashed border-white/25 bg-white/[0.04] p-2.5 shadow-[0_18px_24px_-18px_rgba(0,0,0,0.55)] backdrop-blur"
                 >
                   <div className="flex flex-1 flex-col gap-1">
-                  <label
-                    htmlFor={`exercise-select-${workout.id}`}
-                    className="text-xs uppercase tracking-[0.2em] text-white/60"
-                  >
-                    Add exercise
-                  </label>
-                  <select
-                    id={`exercise-select-${workout.id}`}
-                    name="exerciseId"
-                    defaultValue=""
-                    className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-white focus:border-white/40 focus:outline-none"
-                    disabled={isSubmitting}
-                  >
-                    <option value="" disabled>
-                      Select an exercise
-                    </option>
-                    {availableExercises.map((exercise) => (
-                      <option key={exercise.id} value={exercise.id} className="bg-black">
-                        {exercise.name}
+                    <label
+                      htmlFor={`exercise-select-${workout.id}`}
+                      className="text-xs uppercase tracking-[0.2em] text-white/60"
+                    >
+                      Add exercise
+                    </label>
+                    <select
+                      id={`exercise-select-${workout.id}`}
+                      name="exerciseId"
+                      defaultValue=""
+                      className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-white focus:border-white/40 focus:outline-none"
+                      disabled={isSubmitting}
+                    >
+                      <option value="" disabled>
+                        Select an exercise
                       </option>
-                    ))}
-                  </select>
-                </div>
+                      {availableExercises.map((exercise) => (
+                        <option key={exercise.id} value={exercise.id} className="bg-black">
+                          {exercise.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
@@ -249,25 +423,6 @@ export function WorkoutsView({
                 </button>
               );
 
-              const exerciseList = (
-                <div className="flex flex-col gap-2.5">
-                  {workoutExercises.length > 0 ? (
-                    workoutExercises.map((exercise) => (
-                      <div
-                        key={exercise.id}
-                        className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-white/80"
-                      >
-                        {exercise.name}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-white/60">
-                      No exercises yet
-                    </div>
-                  )}
-                </div>
-              );
-
               return (
                 <SwipeableListItem
                   key={workout.id}
@@ -288,7 +443,7 @@ export function WorkoutsView({
                     <WorkoutCard
                       title={workout.name}
                       meta={`Created ${formatDate(workout.createdAt)}`}
-                      exercises={exerciseList}
+                      exercises={exerciseItems}
                       footer={<div className="flex justify-start">{footerContent}</div>}
                     />
                   </div>
