@@ -165,7 +165,7 @@ export async function reorderWorkoutExercises({
   }
 
   const existing = await db
-    .select({ id: workoutExercises.id })
+    .select({ id: workoutExercises.id, order: workoutExercises.order })
     .from(workoutExercises)
     .where(eq(workoutExercises.workoutId, workoutId))
     .orderBy(asc(workoutExercises.order));
