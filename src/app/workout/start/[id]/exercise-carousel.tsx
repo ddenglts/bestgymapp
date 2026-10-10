@@ -93,7 +93,6 @@ const formatDuration = (totalSeconds: number | null) => {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 };
 
-const MIN_PENDING_DISPLAY_MS = 0;
 
 function ExerciseRestTimer({ startTimestamp }: { startTimestamp: number | null }) {
   const [now, setNow] = useState(() => Date.now());
@@ -211,10 +210,6 @@ export function WorkoutExerciseCarousel({
   const pendingDragOffsetRef = useRef<number | null>(null);
   const dragAnimationFrameRef = useRef<number | null>(null);
   const trackContainerRef = useRef<HTMLDivElement | null>(null);
-  const pendingStartTimesRef = useRef(new Map<string, number>());
-  const pendingRemovalTimeoutsRef = useRef(new Map<string, number>());
-  const pendingDeleteStartTimesRef = useRef(new Map<number, number>());
-  const pendingDeleteTimeoutsRef = useRef(new Map<number, number>());
 
   const initialIndex = useMemo(() => {
     if (!exercises.length) return 0;
@@ -231,6 +226,7 @@ export function WorkoutExerciseCarousel({
   const [isUpdatingActive, startActiveTransition] = useTransition();
   const [pendingExercises, setPendingExercises] = useState<Set<string>>(() => new Set());
   const [pendingRemovals, setPendingRemovals] = useState<Set<number>>(() => new Set());
+  const [actionError, setActionError] = useState<string | null>(null);
   const [, refreshRestTimers] = useState(0);
   const repsInputRefs = useRef(new Map<number, HTMLInputElement>());
   const weightInputRefs = useRef(new Map<number, HTMLInputElement>());
@@ -256,23 +252,6 @@ export function WorkoutExerciseCarousel({
     };
   }, []);
 
-  useEffect(() => {
-    const removalTimeouts = pendingRemovalTimeoutsRef.current;
-    const deleteTimeouts = pendingDeleteTimeoutsRef.current;
-
-    return () => {
-      removalTimeouts.forEach((timeoutId) => {
-        window.clearTimeout(timeoutId);
-      });
-      removalTimeouts.clear();
-
-      deleteTimeouts.forEach((timeoutId) => {
-        window.clearTimeout(timeoutId);
-      });
-      deleteTimeouts.clear();
-    };
-  }, []);
-
   const goToIndex = useCallback(
     (index: number) => {
       if (exercises.length === 0) {
@@ -295,8 +274,12 @@ export function WorkoutExerciseCarousel({
         formData.append("exerciseId", String(targetExercise.exerciseId));
         formData.append("workoutExerciseId", String(targetExercise.workoutExerciseId));
 
-        startActiveTransition(() => {
-          void setActiveExercise(formData);
+        startActiveTransition(async () => {
+          try {
+            await setActiveExercise(formData);
+          } catch {
+            setActionError("Could not save your active exercise. Refresh and try again.");
+          }
         });
       }
 
@@ -537,52 +520,55 @@ export function WorkoutExerciseCarousel({
   }, []);
 
   const handleLogSetSubmit = useCallback(
-    (exerciseId: number) => (event: FormEvent<HTMLFormElement>) => {
-      void event;
-      const pendingKey = String(exerciseId);
-      setPendingExercises((prev) => {
-        const next = new Set(prev);
-        next.add(pendingKey);
-        return next;
-      });
-
-      pendingStartTimesRef.current.set(pendingKey, performance.now());
-      const existingTimeout = pendingRemovalTimeoutsRef.current.get(pendingKey);
-      if (existingTimeout != null) {
-        window.clearTimeout(existingTimeout);
-        pendingRemovalTimeoutsRef.current.delete(pendingKey);
+    (exerciseId: number) => async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const key = String(exerciseId);
+      if (pendingExercises.has(key)) return;
+      const data = new FormData(event.currentTarget);
+      setActionError(null);
+      setPendingExercises((prev) => new Set(prev).add(key));
+      try {
+        await logSet(data);
+      } catch {
+        setActionError("Could not save this set. Your inputs are kept; retry or refresh if the workout has ended.");
+      } finally {
+        setPendingExercises((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
       }
     },
-    [],
+    [logSet, pendingExercises],
   );
 
   const handleDeleteSetSubmit = useCallback(
-    (setId: number) => (event: FormEvent<HTMLFormElement>) => {
-      void event;
-      setPendingRemovals((prev) => {
-        const next = new Set(prev);
-        next.add(setId);
-        return next;
-      });
-
-      pendingDeleteStartTimesRef.current.set(setId, performance.now());
-      const existingTimeout = pendingDeleteTimeoutsRef.current.get(setId);
-      if (existingTimeout != null) {
-        window.clearTimeout(existingTimeout);
-        pendingDeleteTimeoutsRef.current.delete(setId);
+    (setId: number) => async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (pendingRemovals.has(setId)) return;
+      const data = new FormData(event.currentTarget);
+      setActionError(null);
+      setPendingRemovals((prev) => new Set(prev).add(setId));
+      try {
+        await deleteSet(data);
+      } catch {
+        setActionError("Could not remove this set. Retry or refresh if the workout has ended.");
+      } finally {
+        setPendingRemovals((prev) => {
+          const next = new Set(prev);
+          next.delete(setId);
+          return next;
+        });
       }
     },
-    [],
+    [deleteSet, pendingRemovals],
   );
 
   useEffect(() => {
     const knownExerciseIds = new Set<number>();
-    const pendingKeysToClearNow: string[] = [];
-    const pendingKeysToClearLater: Array<{ key: string; delay: number }> = [];
-    const availableSetIds = new Set<number>();
     let restTimestampChanged = false;
 
-    exercises.forEach((exercise, index) => {
+    exercises.forEach((exercise) => {
       knownExerciseIds.add(exercise.workoutExerciseId);
 
       const repsInput = repsInputRefs.current.get(exercise.workoutExerciseId);
@@ -590,16 +576,12 @@ export function WorkoutExerciseCarousel({
       const previousCount = loggedSetCountsRef.current.get(exercise.workoutExerciseId) ?? 0;
       const nextCount = exercise.sets.length;
       const lastSet = nextCount > 0 ? exercise.sets[nextCount - 1] : null;
-      exercise.sets.forEach((set) => {
-        availableSetIds.add(set.id);
-      });
-      const previousLastSetId = lastLoggedSetIdRef.current.get(exercise.workoutExerciseId) ?? null;
       const currentLastSetId = lastSet?.id ?? null;
 
-      const isActiveExercise = index === activeIndex;
       const hasCountChanged = nextCount !== previousCount;
-      const lastSetChanged = previousLastSetId !== currentLastSetId;
-      const shouldUpdateInputs = isActiveExercise || hasCountChanged || lastSetChanged;
+      // Seed each form once. Navigation and unrelated server refreshes must
+      // never overwrite an unfinished draft (including intentionally blank fields).
+      const shouldUpdateInputs = !loggedSetCountsRef.current.has(exercise.workoutExerciseId);
 
       if (shouldUpdateInputs) {
         if (nextCount > 0 && lastSet) {
@@ -662,17 +644,6 @@ export function WorkoutExerciseCarousel({
 
       loggedSetCountsRef.current.set(exercise.workoutExerciseId, nextCount);
 
-      const pendingKey = String(exercise.workoutExerciseId);
-      if (pendingExercises.has(pendingKey) && (hasCountChanged || lastSetChanged)) {
-        const startTime = pendingStartTimesRef.current.get(pendingKey);
-        const elapsed = startTime != null ? performance.now() - startTime : MIN_PENDING_DISPLAY_MS;
-
-        if (elapsed >= MIN_PENDING_DISPLAY_MS) {
-          pendingKeysToClearNow.push(pendingKey);
-        } else {
-          pendingKeysToClearLater.push({ key: pendingKey, delay: MIN_PENDING_DISPLAY_MS - elapsed });
-        }
-      }
     });
 
     for (const exerciseId of Array.from(loggedSetCountsRef.current.keys())) {
@@ -683,123 +654,13 @@ export function WorkoutExerciseCarousel({
         }
         lastLoggedSetIdRef.current.delete(exerciseId);
 
-        const pendingKey = String(exerciseId);
-        if (pendingExercises.has(pendingKey)) {
-          pendingKeysToClearNow.push(pendingKey);
-        }
       }
-    }
-
-    if (pendingRemovals.size > 0) {
-      const removalKeysToClearNow: number[] = [];
-      const removalKeysToClearLater: Array<{ id: number; delay: number }> = [];
-
-      pendingRemovals.forEach((setId) => {
-        if (!availableSetIds.has(setId)) {
-          const startTime = pendingDeleteStartTimesRef.current.get(setId);
-          const elapsed =
-            startTime != null ? performance.now() - startTime : MIN_PENDING_DISPLAY_MS;
-
-          if (elapsed >= MIN_PENDING_DISPLAY_MS) {
-            removalKeysToClearNow.push(setId);
-          } else {
-            removalKeysToClearLater.push({ id: setId, delay: MIN_PENDING_DISPLAY_MS - elapsed });
-          }
-        }
-      });
-
-      if (removalKeysToClearNow.length > 0) {
-        setPendingRemovals((prev) => {
-          let changed = false;
-          const next = new Set(prev);
-          removalKeysToClearNow.forEach((setId) => {
-            if (next.delete(setId)) {
-              changed = true;
-            }
-            pendingDeleteStartTimesRef.current.delete(setId);
-            const timeoutId = pendingDeleteTimeoutsRef.current.get(setId);
-            if (timeoutId != null) {
-              window.clearTimeout(timeoutId);
-              pendingDeleteTimeoutsRef.current.delete(setId);
-            }
-          });
-          return changed ? next : prev;
-        });
-      }
-
-      if (removalKeysToClearLater.length > 0) {
-        removalKeysToClearLater.forEach(({ id, delay }) => {
-          const existingTimeout = pendingDeleteTimeoutsRef.current.get(id);
-          if (existingTimeout != null) {
-            window.clearTimeout(existingTimeout);
-          }
-
-          const timeoutId = window.setTimeout(() => {
-            pendingDeleteTimeoutsRef.current.delete(id);
-            pendingDeleteStartTimesRef.current.delete(id);
-            setPendingRemovals((prev) => {
-              if (!prev.has(id)) {
-                return prev;
-              }
-              const next = new Set(prev);
-              next.delete(id);
-              return next;
-            });
-          }, delay);
-
-          pendingDeleteTimeoutsRef.current.set(id, timeoutId);
-        });
-      }
-    }
-
-    if (pendingKeysToClearNow.length > 0) {
-      setPendingExercises((prev) => {
-        if (pendingKeysToClearNow.every((key) => !prev.has(key))) {
-          return prev;
-        }
-
-        const next = new Set(prev);
-        pendingKeysToClearNow.forEach((key) => {
-          next.delete(key);
-          pendingStartTimesRef.current.delete(key);
-          const timeoutId = pendingRemovalTimeoutsRef.current.get(key);
-          if (timeoutId != null) {
-            window.clearTimeout(timeoutId);
-            pendingRemovalTimeoutsRef.current.delete(key);
-          }
-        });
-        return next;
-      });
-    }
-
-    if (pendingKeysToClearLater.length > 0) {
-      pendingKeysToClearLater.forEach(({ key, delay }) => {
-        const existingTimeout = pendingRemovalTimeoutsRef.current.get(key);
-        if (existingTimeout != null) {
-          window.clearTimeout(existingTimeout);
-        }
-
-        const timeoutId = window.setTimeout(() => {
-          pendingRemovalTimeoutsRef.current.delete(key);
-          pendingStartTimesRef.current.delete(key);
-          setPendingExercises((prev) => {
-            if (!prev.has(key)) {
-              return prev;
-            }
-            const next = new Set(prev);
-            next.delete(key);
-            return next;
-          });
-        }, delay);
-
-        pendingRemovalTimeoutsRef.current.set(key, timeoutId);
-      });
     }
 
     if (restTimestampChanged) {
       refreshRestTimers((value) => value + 1);
     }
-  }, [activeIndex, exercises, pendingExercises, pendingRemovals, refreshRestTimers]);
+  }, [exercises, refreshRestTimers]);
 
   const trackStyle = useMemo<CSSProperties>(() => {
     const translate = `calc(-${activeIndex * 100}% + ${dragOffset}px)`;
@@ -819,6 +680,7 @@ export function WorkoutExerciseCarousel({
 
   return (
     <div className="flex flex-col gap-4">
+      {actionError ? <p role="alert" className="text-sm text-rose-200">{actionError}</p> : null}
       <div className="flex items-center justify-between text-xs uppercase tracking-[0.28em] text-white/45">
         <span>
           Exercise {activeIndex + 1} of {exercises.length}
@@ -903,11 +765,11 @@ export function WorkoutExerciseCarousel({
                                 </span>
                               </div>
                               <form
-                                action={deleteSet}
                                 onSubmit={handleDeleteSetSubmit(set.id)}
                               >
                                 <input type="hidden" name="workoutId" value={String(workoutId)} />
                                 <input type="hidden" name="setId" value={String(set.id)} />
+                                <input type="hidden" name="sessionId" value={String(sessionId)} />
                                 <button
                                   type="submit"
                                   disabled={isRemovingSet}
@@ -939,7 +801,6 @@ export function WorkoutExerciseCarousel({
                     )}
                   </section>
                   <form
-                    action={logSet}
                     onSubmit={handleLogSetSubmit(exercise.workoutExerciseId)}
                     className="mt-auto flex flex-col gap-3 rounded-2xl border border-white/12 bg-white/[0.06] p-4"
                   >

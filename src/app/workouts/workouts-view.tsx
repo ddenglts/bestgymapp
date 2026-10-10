@@ -429,7 +429,7 @@ export function WorkoutsView({
                   trailingActions={
                     <TrailingActions>
                       <SwipeAction
-                        destructive
+                        destructive={false}
                         onClick={() => handleDeleteWorkout(workout.id)}
                       >
                         <div className="flex h-full items-center justify-center bg-red-600/80 px-6 text-sm font-semibold uppercase tracking-[0.3em] text-white">

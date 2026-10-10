@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "cw_singleton_unique" ON "current_workout" USING btree ((true));
