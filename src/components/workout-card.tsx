@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 type WorkoutCardExercise = {
   id: number;
@@ -23,35 +23,34 @@ type WorkoutCardProps = {
 };
 
 export function WorkoutCard({ title, meta, exercises, footer }: WorkoutCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+
   return (
-    <article className="w-full rounded-3xl border border-white/12 bg-white/[0.05] p-4 shadow-[0_18px_36px_-22px_rgba(0,0,0,0.55)] backdrop-blur">
+    <article className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold tracking-tight text-white">
           {title}
         </h2>
-        {meta ? (
-          <span className="text-xs uppercase tracking-[0.18em] text-white/45">
-            {meta}
-          </span>
-        ) : null}
+        <button type="button" aria-expanded={isEditing} onClick={() => setIsEditing((value) => !value)} className="min-h-11 px-2 text-sm text-white/55 hover:text-white">{isEditing ? "Done" : "Edit"}</button>
       </div>
+      {meta ? <p className="mb-3 text-xs text-white/35">{meta}</p> : null}
       <div className="flex flex-col gap-2">
         <div className="flex flex-col gap-2.5">
           {exercises.length > 0 ? (
             exercises.map((exercise) => (
               <div
                 key={exercise.id}
-                className="flex w-full items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-2"
+                className="flex min-h-11 w-full flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] py-2"
               >
-                <span className="flex-1 truncate text-sm font-medium text-white/80">
+                <span className="min-w-24 flex-1 text-sm text-white/80">
                   {exercise.name}
                 </span>
-                <div className="flex items-center gap-1.5">
+                {isEditing ? <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={exercise.onDelete}
                     disabled={exercise.isDeleting || exercise.isMoving}
-                    className="rounded-xl border border-white/10 px-2 py-1 text-xs font-semibold text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-xl border border-white/10 min-h-11 min-w-11 px-2 py-1 text-xs font-semibold text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {exercise.isDeleting
                       ? "Deleting…"
@@ -65,10 +64,10 @@ export function WorkoutCard({ title, meta, exercises, footer }: WorkoutCardProps
                     disabled={
                       !exercise.canMoveUp || exercise.isDeleting || exercise.isMoving
                     }
-                    aria-label="Move exercise up"
-                    className="rounded-xl border border-white/10 px-2 py-1 text-xs font-semibold text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label={`Move ${exercise.name} up`}
+                    className="rounded-xl border border-white/10 min-h-11 min-w-11 px-2 py-1 text-xs font-semibold text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    U
+                    ↑
                   </button>
                   <button
                     type="button"
@@ -76,12 +75,12 @@ export function WorkoutCard({ title, meta, exercises, footer }: WorkoutCardProps
                     disabled={
                       !exercise.canMoveDown || exercise.isDeleting || exercise.isMoving
                     }
-                    aria-label="Move exercise down"
-                    className="rounded-xl border border-white/10 px-2 py-1 text-xs font-semibold text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label={`Move ${exercise.name} down`}
+                    className="rounded-xl border border-white/10 min-h-11 min-w-11 px-2 py-1 text-xs font-semibold text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    D
+                    ↓
                   </button>
-                </div>
+                </div> : null}
               </div>
             ))
           ) : (
@@ -90,7 +89,7 @@ export function WorkoutCard({ title, meta, exercises, footer }: WorkoutCardProps
             </div>
           )}
         </div>
-        {footer ? <div className="pt-1.5">{footer}</div> : null}
+        {footer && (isEditing || exercises.length === 0) ? <div className="pt-1.5">{footer}</div> : null}
       </div>
     </article>
   );

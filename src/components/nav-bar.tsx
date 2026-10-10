@@ -18,10 +18,10 @@ export async function NavBar() {
       : "/workout";
 
   const links = [
-    { href: "/exercises", label: "E" },
-    { href: "/", label: "W" },
-    { href: "/history", label: "H" },
-    { href: workoutHref, label: ">" },
+    { href: "/exercises", label: "Exercises" },
+    { href: "/", label: "Workouts" },
+    { href: "/history", label: "History" },
+    { href: workoutHref, label: "Train" },
   ];
 
   return <NavBarClient links={links} />;

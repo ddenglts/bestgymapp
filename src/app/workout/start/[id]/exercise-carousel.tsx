@@ -66,12 +66,12 @@ const formatDate = (value: Date | null) => {
 const formatPreviousSetSummary = (set: PreviousSet) => {
   const repsDisplay = set.reps ?? "—";
   if (set.weight === null || Number.isNaN(set.weight)) {
-    return `${repsDisplay}@BW`;
+    return `${repsDisplay} × BW`;
   }
 
   const rounded = Number(set.weight);
   const weightDisplay = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
-  return `${repsDisplay}@${weightDisplay}`;
+  return `${repsDisplay} × ${weightDisplay} lb`;
 };
 
 const formatRest = (restSeconds: number | null) => {
@@ -120,7 +120,7 @@ function ExerciseRestTimer({ startTimestamp }: { startTimestamp: number | null }
   const display = formatDuration(elapsedSeconds);
 
   return (
-    <div className="rounded-full border border-white/20 bg-white/[0.08] px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/70 shadow-inner">
+    <div className="text-sm tabular-nums text-white/55">
       Rest {display}
     </div>
   );
@@ -144,7 +144,7 @@ function PreviousSessionSets({
         key={`${exercise.workoutExerciseId}-${set.setNumber}-${index}`}
         type="button"
         onClick={() => fillFormFromPreviousSet(exercise, set)}
-        className="flex min-w-[52px] items-center justify-center rounded-xl border border-white/12 bg-white/[0.08] px-3 py-1 text-center text-[11px] uppercase tracking-[0.25em] text-white/70 transition hover:border-white/20 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-white/40"
+        className="flex min-h-11 items-center justify-center rounded-lg bg-white/[0.06] px-3 text-sm text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-40"
         disabled={isDisabled}
         aria-label={`Use ${set.reps ?? "—"} reps at ${set.weight ?? "—"}`}
       >
@@ -161,7 +161,7 @@ function PreviousSessionSets({
         items.push(
           <span
             key={`${exercise.workoutExerciseId}-rest-${set.setNumber}`}
-            className="select-none text-[11px] uppercase tracking-[0.12em] text-white/80 italic"
+            className="select-none text-xs text-white/35"
           >
             -{formattedRest}-
           </span>,
@@ -181,7 +181,7 @@ const isInteractiveTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
     return false;
   }
-  return Boolean(target.closest("[contenteditable], input, button, select, textarea"));
+  return Boolean(target.closest("[contenteditable], input, button, select, textarea, summary, a"));
 };
 
 export function WorkoutExerciseCarousel({
@@ -226,6 +226,7 @@ export function WorkoutExerciseCarousel({
   const [isUpdatingActive, startActiveTransition] = useTransition();
   const [pendingExercises, setPendingExercises] = useState<Set<string>>(() => new Set());
   const [pendingRemovals, setPendingRemovals] = useState<Set<number>>(() => new Set());
+  const [editingSets, setEditingSets] = useState<Set<number>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [, refreshRestTimers] = useState(0);
   const repsInputRefs = useRef(new Map<number, HTMLInputElement>());
@@ -679,12 +680,14 @@ export function WorkoutExerciseCarousel({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {actionError ? <p role="alert" className="text-sm text-rose-200">{actionError}</p> : null}
-      <div className="flex items-center justify-between text-xs uppercase tracking-[0.28em] text-white/45">
-        <span>
-          Exercise {activeIndex + 1} of {exercises.length}
-        </span>
+    <div className="flex flex-col gap-5">
+      {actionError ? <p role="alert" className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200">{actionError}</p> : null}
+      <div className="flex items-center justify-between text-sm text-white/50">
+        <span>Exercise {activeIndex + 1} of {exercises.length}</span>
+        <div className="flex gap-1">
+          <button type="button" onClick={() => goToIndex(activeIndex - 1)} disabled={activeIndex === 0 || isUpdatingActive} aria-label="Previous exercise" className="flex size-11 items-center justify-center rounded-full text-xl text-white transition hover:bg-white/10 disabled:opacity-25">←</button>
+          <button type="button" onClick={() => goToIndex(activeIndex + 1)} disabled={activeIndex === exercises.length - 1 || isUpdatingActive} aria-label="Next exercise" className="flex size-11 items-center justify-center rounded-full text-xl text-white transition hover:bg-white/10 disabled:opacity-25">→</button>
+        </div>
       </div>
       <div
         ref={trackContainerRef}
@@ -694,233 +697,92 @@ export function WorkoutExerciseCarousel({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       >
-        <div
-          className="flex w-full"
-          style={trackStyle}
-        >
-          {exercises.map((exercise) => {
+        <div className="flex w-full items-start" style={trackStyle}>
+          {exercises.map((exercise, index) => {
             const previousDate = formatDate(exercise.previous?.completedAt ?? null);
-            const hasLoggedSets = exercise.sets.length > 0;
             const isLoggingSet = pendingExercises.has(String(exercise.workoutExerciseId));
-            const lastSet = hasLoggedSets ? exercise.sets[exercise.sets.length - 1] : null;
-            const storedRestStartTimestamp =
-              lastSetLoggedAtRef.current.get(exercise.workoutExerciseId) ?? null;
-            const restStartTimestamp =
-              storedRestStartTimestamp ??
-              (lastSet && Number.isFinite(lastSet.loggedAtMs)
-                ? Math.floor(lastSet.loggedAtMs)
-                : null);
+            const lastSet = exercise.sets.at(-1);
+            const restStartTimestamp = lastSetLoggedAtRef.current.get(exercise.workoutExerciseId) ?? lastSet?.loggedAtMs ?? null;
+            const isEditingSets = editingSets.has(exercise.exerciseId);
+            const previousLastSet = exercise.previous?.sets.at(-1);
 
             return (
               <article
                 key={exercise.workoutExerciseId}
-                className="w-full shrink-0 rounded-3xl border border-white/12 bg-white/[0.05] px-5 py-6 text-white/80 shadow-[0_18px_36px_-22px_rgba(0,0,0,0.55)] backdrop-blur"
+                aria-label={exercise.name}
+                aria-hidden={index !== activeIndex}
+                inert={index !== activeIndex}
+                className="flex w-full shrink-0 flex-col gap-6 px-1 text-white"
               >
-                <div className="flex h-full flex-col gap-5">
-                  <header className="flex items-start justify-between gap-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-[0.3em] text-white/40">
-                        #{exercise.order}
-                      </span>
-                      <h2 className="text-lg font-medium text-white">{exercise.name}</h2>
+                <header>
+                  <h2 className="text-2xl font-semibold tracking-tight">{exercise.name}</h2>
+                  {previousLastSet ? (
+                    <p className="mt-2 text-sm text-white/50">Last session: {formatPreviousSetSummary(previousLastSet)}{previousDate ? ` · ${previousDate}` : ""}</p>
+                  ) : <p className="mt-2 text-sm text-white/45">Your first session with this exercise.</p>}
+                </header>
+                <form onSubmit={handleLogSetSubmit(exercise.workoutExerciseId)} className="flex flex-col gap-4">
+                  <input type="hidden" name="workoutId" value={String(workoutId)} />
+                  <input type="hidden" name="sessionId" value={String(sessionId)} />
+                  <input type="hidden" name="workoutExerciseId" value={String(exercise.workoutExerciseId)} />
+                  <input type="hidden" name="exerciseId" value={String(exercise.exerciseId)} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="min-w-0">
+                      <label htmlFor={`reps-${exercise.workoutExerciseId}`} className="mb-2 block text-sm text-white/60">Reps</label>
+                      <div className="flex items-center gap-2 max-[360px]:flex-col">
+                        <input id={`reps-${exercise.workoutExerciseId}`} name="reps" type="number" min={1} step={1} inputMode="numeric" required ref={assignRepsInputRef(exercise.workoutExerciseId)} className="h-14 w-full min-w-0 flex-1 rounded-xl max-[360px]:min-h-14 border border-white/15 bg-white/[0.06] px-3 text-2xl font-medium tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60" />
+                        <button type="button" onClick={() => incrementReps(exercise.workoutExerciseId)} aria-label="Add one rep" className="flex size-11 shrink-0 items-center justify-center rounded-xl max-[360px]:w-full bg-white/[0.06] text-sm text-white/70 hover:bg-white/10">+1</button>
+                      </div>
                     </div>
-                  </header>
-                  {exercise.previous ? (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-                        Previous session{previousDate ? ` on ${previousDate}` : ""}
-                      </p>
-                      <PreviousSessionSets
-                        exercise={exercise}
-                        fillFormFromPreviousSet={fillFormFromPreviousSet}
-                      />
+                    <div className="min-w-0">
+                      <label htmlFor={`weight-${exercise.workoutExerciseId}`} className="mb-2 block text-sm text-white/60">Weight <span className="text-white/35">(lb)</span></label>
+                      <div className="flex items-center gap-2 max-[360px]:flex-col">
+                        <input id={`weight-${exercise.workoutExerciseId}`} name="weight" type="number" min={0} step="0.5" inputMode="decimal" required ref={assignWeightInputRef(exercise.workoutExerciseId)} className="h-14 w-full min-w-0 flex-1 rounded-xl max-[360px]:min-h-14 border border-white/15 bg-white/[0.06] px-3 text-2xl font-medium tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60" />
+                        <button type="button" onClick={() => incrementWeight(exercise.workoutExerciseId)} aria-label="Add five pounds" className="flex size-11 shrink-0 items-center justify-center rounded-xl max-[360px]:w-full bg-white/[0.06] text-sm text-white/70 hover:bg-white/10">+5</button>
+                      </div>
                     </div>
-                  ) : (
-                    <p className="text-xs uppercase tracking-[0.25em] text-white/30">
-                      No previous data yet.
-                    </p>
+                  </div>
+                  <button type="submit" disabled={isLoggingSet} aria-busy={isLoggingSet} className="flex min-h-12 w-full items-center justify-center rounded-xl bg-emerald-400 px-4 py-3 text-base font-semibold text-black transition hover:bg-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-wait disabled:opacity-60">
+                    {isLoggingSet ? "Saving set…" : "Log set"}
+                  </button>
+                  <div className="flex min-h-6 justify-center"><ExerciseRestTimer startTimestamp={restStartTimestamp} /></div>
+                </form>
+                <section aria-label="Logged sets" className="border-t border-white/10 pt-4">
+                  <div className="mb-1 flex min-h-11 items-center justify-between">
+                    <h3 className="text-sm font-medium text-white/65">This session <span className="ml-1 text-white/35">{exercise.sets.length}</span></h3>
+                    {exercise.sets.length > 0 ? <button type="button" aria-expanded={isEditingSets} onClick={() => setEditingSets((prev) => { const next = new Set(prev); if (next.has(exercise.exerciseId)) next.delete(exercise.exerciseId); else next.add(exercise.exerciseId); return next; })} className="min-h-11 px-2 text-sm text-white/55 hover:text-white">{isEditingSets ? "Done" : "Edit sets"}</button> : null}
+                  </div>
+                  {exercise.sets.length === 0 ? <p className="py-2 text-sm text-white/40">Log your first set above.</p> : (
+                    <ol className="divide-y divide-white/[0.06]">
+                      {exercise.sets.map((set) => (
+                        <li key={set.id} className="flex min-h-11 items-center gap-3 py-1 text-sm">
+                          <span className="w-12 text-white/35">Set {set.setNumber}</span>
+                          <span className="flex-1 tabular-nums">{set.reps ?? "—"} <span className="text-white/35">×</span> {formatWeight(set.weight)}{set.weight !== null ? <span className="text-white/40"> lb</span> : null}</span>
+                          {isEditingSets ? <form onSubmit={handleDeleteSetSubmit(set.id)}>
+                            <input type="hidden" name="workoutId" value={String(workoutId)} />
+                            <input type="hidden" name="sessionId" value={String(sessionId)} />
+                            <input type="hidden" name="setId" value={String(set.id)} />
+                            <button type="submit" disabled={pendingRemovals.has(set.id)} aria-label={`Remove set ${set.setNumber}`} className="min-h-11 px-2 text-sm text-rose-300 hover:text-rose-200 disabled:opacity-50">{pendingRemovals.has(set.id) ? "Removing…" : "Remove"}</button>
+                          </form> : null}
+                        </li>
+                      ))}
+                    </ol>
                   )}
-                  <section className="flex flex-1 flex-col gap-3">
-                    <h3 className="text-xs uppercase tracking-[0.25em] text-white/40">
-                      Logged sets
-                    </h3>
-                    {exercise.sets.length === 0 ? (
-                      <p className="text-xs text-white/40">No sets logged yet.</p>
-                    ) : (
-                      <ul className="flex flex-col gap-2 text-sm text-white/80">
-                        {exercise.sets.map((set) => {
-                          const isRemovingSet = pendingRemovals.has(set.id);
-
-                          return (
-                            <li
-                              key={set.id}
-                              className="flex items-center justify-between gap-3 rounded-2xl border border-white/12 bg-white/[0.06] px-3.5 py-2.5"
-                            >
-                              <div className="flex flex-col gap-1">
-                                <span>
-                                  {set.reps ?? "—"} reps{" "}
-                                  {set.weight !== null
-                                    ? `@ ${formatWeight(set.weight)}`
-                                    : "(bodyweight)"}
-                                </span>
-                              </div>
-                              <form
-                                onSubmit={handleDeleteSetSubmit(set.id)}
-                              >
-                                <input type="hidden" name="workoutId" value={String(workoutId)} />
-                                <input type="hidden" name="setId" value={String(set.id)} />
-                                <input type="hidden" name="sessionId" value={String(sessionId)} />
-                                <button
-                                  type="submit"
-                                  disabled={isRemovingSet}
-                                  aria-disabled={isRemovingSet}
-                                  aria-busy={isRemovingSet}
-                                  className={`inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.3em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
-                                    isRemovingSet
-                                      ? "cursor-wait text-white/60"
-                                      : "text-white/50 hover:text-white/80"
-                                  }`}
-                                >
-                                  {isRemovingSet ? (
-                                    <>
-                                      <span
-                                        aria-hidden="true"
-                                        className="h-3 w-3 rounded-full border border-white/60 border-b-transparent border-r-transparent animate-spin"
-                                      />
-                                      Removing…
-                                    </>
-                                  ) : (
-                                    "Remove"
-                                  )}
-                                </button>
-                              </form>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </section>
-                  <form
-                    onSubmit={handleLogSetSubmit(exercise.workoutExerciseId)}
-                    className="mt-auto flex flex-col gap-3 rounded-2xl border border-white/12 bg-white/[0.06] p-4"
-                  >
-                    <input type="hidden" name="workoutId" value={String(workoutId)} />
-                    <input type="hidden" name="sessionId" value={String(sessionId)} />
-                    <input
-                      type="hidden"
-                      name="workoutExerciseId"
-                      value={String(exercise.workoutExerciseId)}
-                    />
-                    <input
-                      type="hidden"
-                      name="exerciseId"
-                      value={String(exercise.exerciseId)}
-                    />
-                    <div className="flex gap-3">
-                      <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] uppercase tracking-[0.3em] text-white/40">
-                        Reps
-                        <div className="flex items-center gap-2">
-                          <input
-                            name="reps"
-                            type="number"
-                            min={1}
-                            step={1}
-                            required
-                            ref={assignRepsInputRef(exercise.workoutExerciseId)}
-                            className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white/80 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => incrementReps(exercise.workoutExerciseId)}
-                            className="rounded-full border border-white/20 bg-white/[0.08] px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/70 transition hover:border-white/30 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                            aria-label="Add one rep"
-                          >
-                            +1
-                          </button>
-                        </div>
-                      </label>
-                      <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] uppercase tracking-[0.3em] text-white/40">
-                        Weight
-                        <div className="flex items-center gap-2">
-                          <input
-                            name="weight"
-                            type="number"
-                            step="0.5"
-                            inputMode="decimal"
-                            min={0}
-                            required
-                            ref={assignWeightInputRef(exercise.workoutExerciseId)}
-                            className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white/80 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => incrementWeight(exercise.workoutExerciseId)}
-                            className="rounded-full border border-white/20 bg-white/[0.08] px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/70 transition hover:border-white/30 hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                            aria-label="Add five pounds"
-                          >
-                            +5
-                          </button>
-                        </div>
-                      </label>
-                    </div>
-                    <div
-                      className={`flex items-center gap-3 ${
-                        hasLoggedSets ? "justify-between" : "justify-end"
-                      }`}
-                    >
-                      {hasLoggedSets ? (
-                        <ExerciseRestTimer startTimestamp={restStartTimestamp} />
-                      ) : null}
-                      <button
-                        type="submit"
-                        disabled={isLoggingSet}
-                        aria-disabled={isLoggingSet}
-                        aria-busy={isLoggingSet}
-                        className={`inline-flex items-center gap-2 rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40 ${
-                          isLoggingSet
-                            ? "cursor-wait bg-emerald-500/10 text-emerald-100"
-                            : "bg-emerald-500/20 text-emerald-100 hover:border-emerald-300 hover:bg-emerald-500/30"
-                        }`}
-                      >
-                        {isLoggingSet ? (
-                          <>
-                            <span
-                              aria-hidden="true"
-                              className="h-3.5 w-3.5 rounded-full border border-emerald-200/60 border-b-transparent border-r-transparent animate-spin"
-                            />
-                            Logging…
-                          </>
-                        ) : (
-                          "Log set"
-                        )}
-                      </button>
-                    </div>
-                  </form>
-                </div>
+                </section>
+                {exercise.previous ? <details className="border-t border-white/10 pt-2">
+                  <summary className="cursor-pointer py-3 text-sm text-white/60">Previous workout <span className="text-white/35">· tap a set to reuse</span></summary>
+                  <div className="pb-3 pt-1"><PreviousSessionSets exercise={exercise} fillFormFromPreviousSet={fillFormFromPreviousSet} /></div>
+                </details> : null}
               </article>
             );
           })}
         </div>
       </div>
-      <div className="flex justify-center gap-2">
-        {exercises.map((exercise, index) => {
-          const loggedAtLeastThreeSets = exercise.sets.length >= 3;
-          const baseColor = loggedAtLeastThreeSets ? "bg-emerald-400/70" : "bg-white/30";
-          const activeColor = loggedAtLeastThreeSets ? "bg-emerald-400" : "bg-white";
-
-          return (
-            <button
-              key={exercise.workoutExerciseId}
-              type="button"
-              onClick={() => goToIndex(index)}
-              className={`h-2 w-2 rounded-full ${index === activeIndex ? activeColor : baseColor}`}
-              aria-label={`Go to exercise ${index + 1}`}
-              aria-pressed={index === activeIndex}
-              aria-current={index === activeIndex ? "true" : undefined}
-              disabled={isUpdatingActive}
-            />
-          );
-        })}
+      <div className="flex justify-center">
+        {exercises.map((exercise, index) => (
+          <button key={exercise.workoutExerciseId} type="button" onClick={() => goToIndex(index)} aria-label={`Go to exercise ${index + 1}`} aria-pressed={index === activeIndex} disabled={isUpdatingActive} className="flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
+            <span className={`h-1.5 rounded-full transition-all ${index === activeIndex ? "w-6 bg-emerald-400" : `w-1.5 ${exercise.sets.length >= 3 ? "bg-emerald-400/50" : "bg-white/25"}`}`} />
+          </button>
+        ))}
       </div>
     </div>
   );

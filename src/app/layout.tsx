@@ -6,7 +6,6 @@ import { NavBar } from "@/components/nav-bar";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover", // <- allows content under the notch
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#000000" },
@@ -52,7 +51,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#000000] text-white">
-          <main className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col items-center">
+          <main className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col items-center pb-[calc(6rem+env(safe-area-inset-bottom))]">
             {children}
           </main>
           <NavBar />
