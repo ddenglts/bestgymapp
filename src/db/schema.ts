@@ -130,6 +130,8 @@ export const currentWorkout = pgTable('current_workout', {
 
   lastUpdatedAt: timestamp('last_updated_at').defaultNow().notNull(),
 }, (t) => [
+  // The app has one global active session.
+  uniqueIndex('cw_singleton_unique').on(sql`(true)`),
   // At most one "current" row per session
   uniqueIndex('cw_session_unique').on(t.sessionId),
   index('cw_session_idx').on(t.sessionId),

@@ -43,6 +43,13 @@
       "when": 1760371801097,
       "tag": "0005_fat_the_watchers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791606714493,
+      "tag": "0006_glossy_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }

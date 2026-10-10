@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
+import { workoutSessionStore } from "@/db/workout-session-store";
 import { exercises, workoutExercises, workouts } from "@/db/schema";
 
 type CreateWorkoutInput = {
@@ -115,11 +116,7 @@ type DeleteWorkoutInput = {
 };
 
 export async function deleteWorkout({ id }: DeleteWorkoutInput) {
-  const deleted = await db.delete(workouts).where(eq(workouts.id, id)).returning();
-
-  if (deleted.length === 0) {
-    throw new Error("Workout not found.");
-  }
+  await workoutSessionStore.deleteWorkout(id);
 
   revalidatePath("/");
 }

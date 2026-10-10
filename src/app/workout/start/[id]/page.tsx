@@ -102,14 +102,14 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
     sets: PreviousSet[];
   };
 
-  const setsByWorkoutExerciseId = new Map<number, LoggedSet[]>();
+  const setsByExerciseId = new Map<number, LoggedSet[]>();
   const previousStatsByExerciseId = new Map<number, PreviousStat>();
 
   if (isActiveSessionForWorkout && activeSessionId) {
     const sessionSets = await db
       .select({
         id: exerciseSets.id,
-        workoutExerciseId: exerciseSets.workoutExerciseId,
+        exerciseId: exerciseSets.exerciseId,
         setNumber: exerciseSets.setNumber,
         reps: exerciseSets.reps,
         weight: exerciseSets.weight,
@@ -120,10 +120,6 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
       .orderBy(asc(exerciseSets.workoutExerciseId), asc(exerciseSets.setNumber));
 
     for (const set of sessionSets) {
-      if (set.workoutExerciseId == null) {
-        continue;
-      }
-
       const normalizedWeight =
         set.weight === null
           ? null
@@ -143,8 +139,8 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
       const loggedAt =
         set.loggedAt instanceof Date ? set.loggedAt : new Date(set.loggedAt ?? Date.now());
 
-      const workoutExerciseId = set.workoutExerciseId;
-      const list = setsByWorkoutExerciseId.get(workoutExerciseId) ?? [];
+      const exerciseId = set.exerciseId;
+      const list = setsByExerciseId.get(exerciseId) ?? [];
       list.push({
         id: set.id,
         setNumber: normalizedSetNumber || list.length + 1,
@@ -152,10 +148,10 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
         weight: Number.isNaN(normalizedWeight ?? NaN) ? null : normalizedWeight,
         loggedAtMs: loggedAt.getTime(),
       });
-      setsByWorkoutExerciseId.set(workoutExerciseId, list);
+      setsByExerciseId.set(exerciseId, list);
     }
 
-    for (const list of setsByWorkoutExerciseId.values()) {
+    for (const list of setsByExerciseId.values()) {
       list.sort((a, b) => a.setNumber - b.setNumber);
     }
 
@@ -355,6 +351,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
       </div>
       {isActiveSessionForWorkout && activeSessionId ? (
         <WorkoutExerciseCarousel
+          key={activeSessionId}
           sessionId={activeSessionId}
           workoutId={workoutRow.id}
           initialExerciseId={
@@ -368,7 +365,7 @@ export default async function StartWorkoutDetailPage({ params }: WorkoutParams) 
             exerciseId: item.exerciseId,
             name: item.exerciseName,
             order: item.order,
-            sets: setsByWorkoutExerciseId.get(item.id) ?? [],
+            sets: setsByExerciseId.get(item.exerciseId) ?? [],
             previous: previousStatsByExerciseId.get(item.exerciseId) ?? null,
           }))}
         />
